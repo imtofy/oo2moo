@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<activity id="3248" moduleid="215271" modulename="bigbluebuttonbn" contextid="463381">
+  <bigbluebuttonbn id="3248">
+    <type>0</type>
+    <course>4920</course>
+    <name>Big Blue Button</name>
+    <intro>&lt;p&gt;Dies ist ein Platzhaltertext für Vorlagenzwecke.&lt;/p&gt;</intro>
+    <introformat>1</introformat>
+    <meetingid>0000000000000000000000000000000000000000</meetingid>
+    <moderatorpass>dummy1234</moderatorpass>
+    <viewerpass>dummy5678</viewerpass>
+    <wait>0</wait>
+    <record>1</record>
+    <recordallfromstart>0</recordallfromstart>
+    <recordhidebutton>0</recordhidebutton>
+    <welcome />
+    <voicebridge>0</voicebridge>
+    <openingtime>0</openingtime>
+    <closingtime>0</closingtime>
+    <timecreated>1739274471</timecreated>
+    <timemodified>1739435308</timemodified>
+    <presentation />
+    <participants>[{"selectiontype":"all","selectionid":"all","role":"viewer"}]</participants>
+    <userlimit>0</userlimit>
+    <recordings_html>0</recordings_html>
+    <recordings_deleted>1</recordings_deleted>
+    <recordings_imported>0</recordings_imported>
+    <recordings_preview>1</recordings_preview>
+    <clienttype>0</clienttype>
+    <muteonstart>1</muteonstart>
+    <completionattendance>0</completionattendance>
+    <completionengagementchats>0</completionengagementchats>
+    <completionengagementtalks>0</completionengagementtalks>
+    <completionengagementraisehand>0</completionengagementraisehand>
+    <completionengagementpollvotes>0</completionengagementpollvotes>
+    <completionengagementemojis>0</completionengagementemojis>
+    <guestallowed>0</guestallowed>
+    <mustapproveuser>1</mustapproveuser>
+    <showpresentation>0</showpresentation>
+    <grade>0</grade>
+    <logs>
+    </logs>
+    <recordings>
+    </recordings>
+  </bigbluebuttonbn>
+</activity>

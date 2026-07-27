@@ -2,7 +2,7 @@ Copyright (c) 2026 imtofy
 
 # Academic and Personal Transparency License (APTL) 1.0
 
-Dieser Lizenztext ist die für diese Kopie der Software maßgebliche Fassung. Eine ggf. abweichende, neuere Fassung ist zu Informationszwecken unter `https://github.com/imtofy/oo2moo/blob/main/LICENSE.md` einsehbar (siehe § 8 zur Anwendbarkeit bei Aktualisierungen).
+Dieser Lizenztext ist die für diese Kopie der Software maßgebliche Fassung. Eine ggf. abweichende, neuere Fassung ist zu Informationszwecken unter [https://github.com/imtofy/oo2moo/blob/main/LICENSE.md](https://github.com/imtofy/oo2moo/blob/main/LICENSE.md) einsehbar (siehe § 8 zur Anwendbarkeit bei Aktualisierungen).
 
 ## Präambel und Geltungsbereich
 
@@ -34,7 +34,7 @@ Bei jeder genehmigten oder durch diese Klausel vorab gestatteten Modifikation bl
 
 ## § 6 Urheberrecht und Drittanbieter-Komponenten (Third-Party Code)
 
-Das vollständige Urheberrecht an der originär programmierten Software verbleibt bei der lizenzgebenden Person. Diese Lizenz erstreckt sich ausschließlich auf diesen originären Code. Die ausführbare Datei (.exe) enthält eingebettete Softwarebibliotheken und Build-Komponenten von Drittanbietern. Die zwingend erforderlichen Lizenztexte, Copyright-Vermerke und Haftungsausschlüsse dieser Drittanbieter sind in der separaten Datei [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) aufgeführt, die der Software beiliegt. Die Nutzung dieser Drittanbieter-Komponenten unterliegt vollumfänglich den dort definierten Original-Lizenzen.
+Das vollständige Urheberrecht an der originär programmierten Software verbleibt bei der lizenzgebenden Person. Diese Lizenz erstreckt sich ausschließlich auf diesen originären Code. Die ausführbare Datei (.exe) enthält eingebettete Softwarebibliotheken und Build-Komponenten von Drittanbietern. Die zwingend erforderlichen Lizenztexte, Copyright-Vermerke und Haftungsausschlüsse dieser Drittanbieter sind in der separaten Datei [THIRD-PARTY-LICENSES.md](https://github.com/imtofy/oo2moo/blob/main/THIRD-PARTY-LICENSES.md) aufgeführt, die der Software beiliegt. Die Nutzung dieser Drittanbieter-Komponenten unterliegt vollumfänglich den dort definierten Original-Lizenzen.
 
 ## § 7 Gewährleistung und Haftung
 

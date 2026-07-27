@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<activity id="2375" moduleid="215274" modulename="feedback" contextid="463411">
+  <feedback id="2375">
+    <name>Feedback</name>
+    <intro>&lt;p&gt;Dies ist ein Platzhaltertext für Vorlagenzwecke.&lt;/p&gt;</intro>
+    <introformat>1</introformat>
+    <anonymous>1</anonymous>
+    <email_notification>0</email_notification>
+    <multiple_submit>0</multiple_submit>
+    <autonumbering>0</autonumbering>
+    <site_after_submit />
+    <page_after_submit />
+    <page_after_submitformat>1</page_after_submitformat>
+    <publish_stats>0</publish_stats>
+    <timeopen>0</timeopen>
+    <timeclose>0</timeclose>
+    <timemodified>1740569355</timemodified>
+    <completionsubmit>0</completionsubmit>
+    <items>
+    </items>
+    <completeds>
+    </completeds>
+  </feedback>
+</activity>

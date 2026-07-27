@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="680" viewBox="0 0 680 680">
+<g stroke="#262d35" stroke-width="12" stroke-linejoin="round">
+<polygon points="144,231.0 234,276 234,388 144,343.0" fill="#155a8c"/>
+<polygon points="324,231.0 234,276 234,388 324,343.0" fill="#3a4550"/>
+<polygon points="234,186 324,231.0 234,276 144,231.0" fill="#3f8ab8"/>
+</g>
+<g stroke="#262d35" stroke-width="12" stroke-linejoin="round">
+<polygon points="356,337.0 446,382 446,494 356,449.0" fill="#0d3f66"/>
+<polygon points="536,337.0 446,382 446,494 536,449.0" fill="#155a8c"/>
+<polygon points="446,292 536,337.0 446,382 356,337.0" fill="#3a4550"/>
+</g>
+<path d="M 312,284 C 364,244 424,248 456,294" fill="none" stroke="#262d35" stroke-width="34" stroke-linecap="round"/>
+<path d="M 312,284 C 364,244 424,248 456,294" fill="none" stroke="#155a8c" stroke-width="22" stroke-linecap="round"/>
+<polygon points="486,337 435,315 483,282" fill="#155a8c" stroke="#262d35" stroke-width="12" stroke-linejoin="round"/>
+<text transform="matrix(1,0.5,0,1.25,189,309)" text-anchor="middle" dominant-baseline="central" font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="62" fill="#ffffff" stroke="#262d35" stroke-width="3" paint-order="stroke">O</text>
+<text transform="matrix(1,-0.5,0,1,491,415)" text-anchor="middle" dominant-baseline="central" font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="58" fill="#ffffff" stroke="#262d35" stroke-width="3" paint-order="stroke">M</text>
+</svg>

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<activity id="1966" moduleid="209291" modulename="choice" contextid="454937">
+  <choice id="1966">
+    <name>Abstimmung</name>
+    <intro>&lt;p&gt;Dies ist ein Platzhaltertext für Vorlagenzwecke.&lt;/p&gt;</intro>
+    <introformat>1</introformat>
+    <publish>0</publish>
+    <showresults>0</showresults>
+    <display>1</display>
+    <allowupdate>0</allowupdate>
+    <allowmultiple>0</allowmultiple>
+    <showunanswered>0</showunanswered>
+    <limitanswers>0</limitanswers>
+    <timeopen>0</timeopen>
+    <timeclose>0</timeclose>
+    <timemodified>1739433750</timemodified>
+    <completionsubmit>0</completionsubmit>
+    <showpreview>0</showpreview>
+    <includeinactive>0</includeinactive>
+    <showavailable>0</showavailable>
+    <options>
+      <option id="9064">
+        <text>Kommunikationsfähigkeiten</text>
+        <maxanswers>0</maxanswers>
+        <timemodified>1739433750</timemodified>
+      </option>
+      <option id="9256">
+        <text>Präsentationsfähigkeiten</text>
+        <maxanswers>0</maxanswers>
+        <timemodified>1739433750</timemodified>
+      </option>
+      <option id="9257">
+        <text>Konfliktmanagement</text>
+        <maxanswers>0</maxanswers>
+        <timemodified>1739433750</timemodified>
+      </option>
+    </options>
+    <answers>
+    </answers>
+  </choice>
+</activity>
