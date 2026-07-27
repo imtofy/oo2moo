@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<activity id="8226" moduleid="215336" modulename="quiz" contextid="463536">
+  <quiz id="8226">
+    <name>Test</name>
+    <intro>&lt;p&gt;Dies ist ein Platzhaltertext für Vorlagenzwecke.&lt;/p&gt;</intro>
+    <introformat>1</introformat>
+    <timeopen>0</timeopen>
+    <timeclose>0</timeclose>
+    <timelimit>0</timelimit>
+    <overduehandling>autosubmit</overduehandling>
+    <graceperiod>0</graceperiod>
+    <preferredbehaviour>deferredfeedback</preferredbehaviour>
+    <canredoquestions>0</canredoquestions>
+    <attempts_number>0</attempts_number>
+    <attemptonlast>0</attemptonlast>
+    <grademethod>1</grademethod>
+    <decimalpoints>2</decimalpoints>
+    <questiondecimalpoints>-1</questiondecimalpoints>
+    <reviewattempt>69888</reviewattempt>
+    <reviewcorrectness>4352</reviewcorrectness>
+    <reviewmaxmarks>69888</reviewmaxmarks>
+    <reviewmarks>4352</reviewmarks>
+    <reviewspecificfeedback>4352</reviewspecificfeedback>
+    <reviewgeneralfeedback>4352</reviewgeneralfeedback>
+    <reviewrightanswer>4352</reviewrightanswer>
+    <reviewoverallfeedback>4352</reviewoverallfeedback>
+    <questionsperpage>1</questionsperpage>
+    <navmethod>free</navmethod>
+    <shuffleanswers>1</shuffleanswers>
+    <sumgrades>0.00000</sumgrades>
+    <grade>10.00000</grade>
+    <timecreated>1739357328</timecreated>
+    <timemodified>1739439560</timemodified>
+    <password />
+    <subnet />
+    <browsersecurity>-</browsersecurity>
+    <delay1>0</delay1>
+    <delay2>0</delay2>
+    <showuserpicture>0</showuserpicture>
+    <showblocks>0</showblocks>
+    <completionattemptsexhausted>0</completionattemptsexhausted>
+    <completionminattempts>0</completionminattempts>
+    <allowofflineattempts>0</allowofflineattempts>
+    <precreateattempts>$@NULL@$</precreateattempts>
+    <subplugin_quizaccess_seb_quiz>
+    </subplugin_quizaccess_seb_quiz>
+    <quiz_grade_items>
+    </quiz_grade_items>
+    <question_instances>
+    </question_instances>
+    <sections>
+      <section id="11127">
+        <firstslot>1</firstslot>
+        <heading />
+        <shufflequestions>0</shufflequestions>
+      </section>
+    </sections>
+    <feedbacks>
+      <feedback id="22663">
+        <feedbacktext />
+        <feedbacktextformat>1</feedbacktextformat>
+        <mingrade>0.00000</mingrade>
+        <maxgrade>11.00000</maxgrade>
+      </feedback>
+    </feedbacks>
+    <overrides>
+    </overrides>
+    <grades>
+    </grades>
+    <attempts>
+    </attempts>
+  </quiz>
+</activity>

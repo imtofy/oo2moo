@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<activity id="15434" moduleid="209280" modulename="url" contextid="454926">
+  <url id="15434">
+    <name>Link/URL</name>
+    <intro>&lt;p&gt;Dies ist ein Platzhaltertext für Vorlagenzwecke.&lt;/p&gt;</intro>
+    <introformat>1</introformat>
+    <externalurl>https://example.com</externalurl>
+    <display>3</display>
+    <displayoptions>a:0:{}</displayoptions>
+    <parameters>a:0:{}</parameters>
+    <timemodified>1739433242</timemodified>
+  </url>
+</activity>

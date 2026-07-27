@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<activity id="872" moduleid="209269" modulename="book" contextid="454915">
+  <book id="872">
+    <name>Buch</name>
+    <intro>&lt;p&gt;Dies ist ein Platzhaltertext für Vorlagenzwecke.&lt;/p&gt;</intro>
+    <introformat>1</introformat>
+    <numbering>2</numbering>
+    <navstyle>1</navstyle>
+    <customtitles>0</customtitles>
+    <timecreated>1732113803</timecreated>
+    <timemodified>1739433139</timemodified>
+    <chapters>
+      <chapter id="4362">
+        <pagenum>3</pagenum>
+        <subchapter>0</subchapter>
+        <title>Kapitel 1</title>
+        <content>&lt;p&gt;Dies ist ein Platzhalter-Kapitelinhalt (Kapitel 1).&lt;/p&gt;</content>
+        <contentformat>1</contentformat>
+        <hidden>0</hidden>
+        <timemodified>1739427751</timemodified>
+        <importsrc />
+      </chapter>
+      <chapter id="4363">
+        <pagenum>4</pagenum>
+        <subchapter>1</subchapter>
+        <title>Kapitel 2</title>
+        <content>&lt;p&gt;Dies ist ein Platzhalter-Kapitelinhalt (Kapitel 2).&lt;/p&gt;</content>
+        <contentformat>1</contentformat>
+        <hidden>0</hidden>
+        <timemodified>1739258773</timemodified>
+        <importsrc />
+      </chapter>
+      <chapter id="4364">
+        <pagenum>2</pagenum>
+        <subchapter>0</subchapter>
+        <title>Kapitel 3</title>
+        <content>&lt;p&gt;Dies ist ein Platzhalter-Kapitelinhalt (Kapitel 3).&lt;/p&gt;</content>
+        <contentformat>1</contentformat>
+        <hidden>0</hidden>
+        <timemodified>1739258729</timemodified>
+        <importsrc />
+      </chapter>
+      <chapter id="4361">
+        <pagenum>1</pagenum>
+        <subchapter>0</subchapter>
+        <title>Kapitel 4</title>
+        <content>&lt;p&gt;Dies ist ein Platzhalter-Kapitelinhalt (Kapitel 4).&lt;/p&gt;</content>
+        <contentformat>1</contentformat>
+        <hidden>0</hidden>
+        <timemodified>1739258715</timemodified>
+        <importsrc />
+      </chapter>
+    </chapters>
+    <chaptertags>
+    </chaptertags>
+  </book>
+</activity>

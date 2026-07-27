@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<activity id="9107" moduleid="209282" modulename="folder" contextid="454928">
+  <folder id="9107">
+    <name>Verzeichnis</name>
+    <intro>&lt;p&gt;Dies ist ein Platzhaltertext für Vorlagenzwecke.&lt;/p&gt;</intro>
+    <introformat>1</introformat>
+    <revision>5</revision>
+    <timemodified>1739433315</timemodified>
+    <display>0</display>
+    <showexpanded>1</showexpanded>
+    <showdownloadfolder>1</showdownloadfolder>
+    <forcedownload>1</forcedownload>
+  </folder>
+</activity>
