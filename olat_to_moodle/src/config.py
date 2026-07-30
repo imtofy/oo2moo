@@ -121,6 +121,15 @@ UNRECOGNIZED_TYPE_MARKER = "❓"
 FLATTENED_BOUNDARY_MARKER = "🔀"
 FLATTENED_CHILD_MARKER = "ℹ️"
 
+# Sammel-Sektion für Bausteine ohne umschließenden OLAT-Struktur-Knoten -
+# eigener, klar erkennbarer Titel statt "Allgemein"/"Allgemeines", damit sie
+# nicht mit einer echten, vom Kursautor gleich oder ähnlich benannten Sektion
+# verwechselt wird. main.py hängt eine laufende Nummer an (" #1", " #2", ...),
+# weil es davon mehrere geben kann - jeder echte Struktur-Abschnitt
+# unterbricht die aktuelle Sammlung, danach beginnt bei Bedarf eine neue.
+UNGROUPED_SECTION_MARKER = "📌"
+UNGROUPED_SECTION_TITLE = "Sammlung aller Bausteine"
+
 # Farben (bg, Rand, Akzent links) pro Symbol im Systemprotokoll. Nur einzelne
 # style=""-Attribute mit Eigenschaften aus Moodles echter CSSDefinition.php
 # (MOODLE_500_STABLE) - kein <style>-Block (wird von purify_html() beim

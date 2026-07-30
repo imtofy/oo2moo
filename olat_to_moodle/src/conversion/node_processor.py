@@ -106,17 +106,22 @@ def _auto_embed(html_content: str, attachments: List[Dict]) -> str:
 
 def build_node_content(node: Dict, manifest, m_type: str, olat_type: str,
                        link_map: Optional[Dict] = None
-                       ) -> Tuple[str, List[Dict], List[Dict], List[str], Optional[str]]:
+                       ) -> Tuple[str, List[Dict], List[Dict], List[str], Optional[str], str]:
     """Sammelt HTML-Inhalt und Anhänge eines Kursknotens und bereitet sie für Moodle auf.
 
     link_map (OLAT-ident → (Moodle-Modul-ID, Modultyp)) löst kursinterne
     gotonode-Verweise zu echten Moodle-Links auf. OLATs "Beschreibung"
-    (node['description']) wird vor den restlichen Inhalt gesetzt - sonst
-    geht der Text bei Bausteintypen wie Ordner, Forum oder Externer Seite
-    verloren, die sonst keinen Platz dafür haben. Bilder/Dokumente im HTML
-    werden relativ zur HTML-Quelle nachgeladen, damit bei mehrfach
-    vorkommenden Dateinamen (z.B. 'mceclip0.png') die richtige Version
-    gefunden wird.
+    (node['description']) bekommt bei m_type='page' einen eigenen, separat
+    zurückgegebenen Sanitize-Durchlauf (description_html) statt in den
+    Seiteninhalt eingemischt zu werden - mod_page hat mit <intro> (Info-
+    Block, im Template bereits über showdescription/printintro aktiv) und
+    <content> (eigentlicher Seiteninhalt) zwei eigenständige Felder dafür
+    (siehe main.py/moodle_xml.py). Bei jedem anderen Bausteintyp (Ordner,
+    Forum, Externe Seite, ...) gibt es kein vom Intro getrenntes Content-
+    Feld - dort bleibt die Beschreibung wie bisher vorne im gemeinsamen
+    Text, sonst ginge sie verloren. Bilder/Dokumente im HTML werden relativ
+    zur HTML-Quelle nachgeladen, damit bei mehrfach vorkommenden Dateinamen
+    (z.B. 'mceclip0.png') die richtige Version gefunden wird.
 
     Bei m_type='folder' kommen die Anhänge über
     manifest.get_node_folder_tree() statt get_node_assets(), damit echte
@@ -129,12 +134,14 @@ def build_node_content(node: Dict, manifest, m_type: str, olat_type: str,
     Intro-Text wäre redundant.
 
     Gibt (bereinigtes HTML, eindeutige Anhänge, entfernte OLAT-interne
-    Links, leere Unterordner-Pfade, Inhalts-Problem) zurück - leere
-    Unterordner-Pfade nur bei m_type='folder' befüllt, main.py legt dafür
-    eigene Verzeichnis-Marker an (sonst zeigt Moodle den leeren Unterordner
-    gar nicht erst an). Inhalts-Problem ist None im Normalfall, sonst ein
-    kurzer Grund-String (z.B. fehlende referenzierte Datei) - main.py nutzt
-    das, um den Baustein im Systemprotokoll als ❓ statt ✅ zu zählen.
+    Links, leere Unterordner-Pfade, Inhalts-Problem, Beschreibung als
+    eigenes HTML) zurück - leere Unterordner-Pfade nur bei m_type='folder'
+    befüllt, main.py legt dafür eigene Verzeichnis-Marker an (sonst zeigt
+    Moodle den leeren Unterordner gar nicht erst an). Inhalts-Problem ist
+    None im Normalfall, sonst ein kurzer Grund-String (z.B. fehlende
+    referenzierte Datei) - main.py nutzt das, um den Baustein im
+    Systemprotokoll als ❓ statt ✅ zu zählen. description_html ist nur bei
+    m_type='page' befüllt, sonst immer leer (siehe oben).
     """
     ident = node.get('ident')
     html_content = ""
@@ -217,15 +224,11 @@ def build_node_content(node: Dict, manifest, m_type: str, olat_type: str,
     else:
         attachments.extend(node_assets)
 
-    description = (node.get('description') or '').strip()
-    if description:
-        html_content = f"{description}{html_content}" if html_content else description
-
-    if reference_warning:
-        html_content = f"{reference_warning}{html_content}" if html_content else reference_warning
-
-    if html_content:
-        html_content, asset_paths, removed_links = sanitize_for_moodle(html_content, link_map)
+    def _resolve_assets(asset_paths):
+        """Löst im HTML gefundene Bild-/Medienverweise gegen das Manifest-VFS
+        auf und hängt Treffer an attachments an - gemeinsam für Seiteninhalt
+        und (bei m_type='page') separat sanitisierte Beschreibung, sonst
+        würden Bilder AUS der Beschreibung nicht mehr in files.xml landen."""
         for asset_path in asset_paths:
             print(f"[DEBUG] Asset in HTML erkannt: {asset_path}")
             found_asset = manifest.search_file(asset_path, base_path=html_base_path)
@@ -235,6 +238,23 @@ def build_node_content(node: Dict, manifest, m_type: str, olat_type: str,
             else:
                 print(f"[!] Eingebettete Datei '{asset_path}' nicht im Archiv gefunden – "
                       f"fehlt im Kursinhalt.")
+
+    description = (node.get('description') or '').strip()
+    description_html = ""
+    if description and m_type == "page":
+        description_html, desc_asset_paths, desc_removed_links = sanitize_for_moodle(description, link_map)
+        removed_links.extend(desc_removed_links)
+        _resolve_assets(desc_asset_paths)
+    elif description:
+        html_content = f"{description}{html_content}" if html_content else description
+
+    if reference_warning:
+        html_content = f"{reference_warning}{html_content}" if html_content else reference_warning
+
+    if html_content:
+        html_content, asset_paths, content_removed_links = sanitize_for_moodle(html_content, link_map)
+        removed_links.extend(content_removed_links)
+        _resolve_assets(asset_paths)
     else:
         html_content = ""
 
@@ -256,4 +276,4 @@ def build_node_content(node: Dict, manifest, m_type: str, olat_type: str,
         html_content = _auto_embed(html_content, unique_attachments)
 
     content_issue = "Referenzierte Datei fehlt" if reference_warning else None
-    return html_content, unique_attachments, removed_links, empty_dirs, content_issue
+    return html_content, unique_attachments, removed_links, empty_dirs, content_issue, description_html

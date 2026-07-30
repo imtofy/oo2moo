@@ -172,12 +172,12 @@ def _walk_tree(tree_elem, st_chain: List[str], nodes: List[Dict], deleted_nodes:
     gesetzt - auch mehrfach verschachtelte zu tiefe Abschnitte "vererben" es.
 
     Eine neue Ebene öffnet nicht nur 'st' (reiner Struktur-Container ohne
-    eigenen Inhalt), sondern jeder Knotentyp mit eigenem <children>-Element
-    in der rohen XML - so kann z.B. eine Einzelseite (sp) mit angehängtem
-    Forum im Baum als aufklappbarer Elternknoten erscheinen. 'has_children'
-    wird pro Knoten mit rausgegeben, main.py braucht das, um zu wissen, ob
-    ein Knoten (zusätzlich zu seiner eigenen Aktivität) auch einen
-    Unterabschnitt für seine Kinder aufmacht.
+    eigenen Inhalt), sondern jeder Knotentyp mit echten Kind-Elementen im
+    <children>-Element der rohen XML - so kann z.B. eine Einzelseite (sp)
+    mit angehängtem Forum im Baum als aufklappbarer Elternknoten erscheinen.
+    'has_children' wird pro Knoten mit rausgegeben, main.py braucht das, um
+    zu wissen, ob ein Knoten (zusätzlich zu seiner eigenen Aktivität) auch
+    einen Unterabschnitt für seine Kinder aufmacht.
     """
     cn = None
     for child in tree_elem:
@@ -204,7 +204,12 @@ def _walk_tree(tree_elem, st_chain: List[str], nodes: List[Dict], deleted_nodes:
                                    'reason': 'Teilnehmerliste wird nicht übernommen',
                                    'ident': ident, 'parent_st_idents': list(st_chain)})
         else:
-            has_children = tree_elem.find('children') is not None
+            # OLAT schreibt für JEDEN Knoten ein <children>-Element, auch
+            # ohne echte Kinder (dann als leeres Self-Closing-Tag
+            # '<children/>') - find() findet das Tag so oder so, deshalb
+            # zusätzlich prüfen, ob wirklich Kind-Elemente drinstehen.
+            children_tag = tree_elem.find('children')
+            has_children = children_tag is not None and len(children_tag) > 0
             nodes.append({
                 'title': title,
                 'type': node_type,

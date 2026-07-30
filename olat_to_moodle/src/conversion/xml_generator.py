@@ -94,18 +94,26 @@ def generate_course_xml(now, fullname=DEFAULT_FULLNAME, shortname=DEFAULT_SHORTN
 </course>"""
 
 
-def generate_section_xml(section_id, number, now, title, module_ids=None, component=None, itemid=None):
+def generate_section_xml(section_id, number, now, title, module_ids=None, component=None, itemid=None,
+                         summary=""):
     """component/itemid nur bei einem Moodle-Unterabschnitt gesetzt
     (component='mod_subsection', itemid=Instanz-ID der subsection-Aktivität) -
-    verknüpft diesen Abschnitt als deren Inhalt; normale Abschnitte bleiben NULL."""
+    verknüpft diesen Abschnitt als deren Inhalt; normale Abschnitte bleiben NULL.
+
+    summary ist bereits fertig aufbereitetes HTML (wie bei jeder Aktivität,
+    siehe node_processor.build_node_content) - html.escape(quote=False) statt
+    ElementTree, weil diese Funktion (anders als moodle_xml.py) die XML per
+    f-String baut und deshalb & / < / > selbst maskieren muss, sonst würden
+    echte HTML-Tags in der Beschreibung als XML-Kindelemente fehlinterpretiert."""
     sequence = ",".join(str(mid) for mid in module_ids) if module_ids else ""
     safe_title = str(title).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    safe_summary = html.escape(summary, quote=False) if summary else ""
     component_val = component if component else "$@NULL@$"
     itemid_val = itemid if itemid is not None else "$@NULL@$"
     return f"""<section id="{section_id}">
   <number>{number}</number>
   <name>{safe_title}</name>
-  <summary></summary>
+  <summary>{safe_summary}</summary>
   <summaryformat>1</summaryformat>
   <sequence>{sequence}</sequence>
   <visible>1</visible>
@@ -118,13 +126,17 @@ def generate_section_xml(section_id, number, now, title, module_ids=None, compon
 
 def generate_moodle_backup_xml(processed_activities, sections, now, backup_id,
                                 fullname=DEFAULT_FULLNAME, shortname=DEFAULT_SHORTNAME,
-                                has_questions=False):
+                                has_questions=False, has_blocks=False):
     """Baut die äußere moodle_backup.xml - das Inhaltsverzeichnis des ganzen Archivs.
 
     Die 'questionbank'-Einstellung ist entscheidend: steht sie auf 0,
     ignoriert Moodle die komplette Fragenbank-Restaurierung, unabhängig
     davon, was in questions.xml steht - deshalb wird sie hier dynamisch
-    auf 1 gesetzt, sobald has_questions True ist.
+    auf 1 gesetzt, sobald has_questions True ist. Analog 'blocks': steht sie
+    auf 0, ignoriert Moodle jeden Ordner unter course/blocks/, egal was dort
+    liegt - ein echter Export (Kurs mit manuell hinzugefügtem Kalender-Block)
+    zeigt keine weitere Block-spezifische Einstellung, nur diesen einen
+    globalen Schalter.
     """
     safe_fullname = html.escape(fullname)
     safe_shortname = html.escape(shortname)
@@ -199,7 +211,7 @@ def generate_moodle_backup_xml(processed_activities, sections, now, backup_id,
       <setting><level>root</level><name>anonymize</name><value>0</value></setting>
       <setting><level>root</level><name>role_assignments</name><value>0</value></setting>
       <setting><level>root</level><name>activities</name><value>1</value></setting>
-      <setting><level>root</level><name>blocks</name><value>0</value></setting>
+      <setting><level>root</level><name>blocks</name><value>{1 if has_blocks else 0}</value></setting>
       <setting><level>root</level><name>files</name><value>1</value></setting>
       <setting><level>root</level><name>filters</name><value>0</value></setting>
       <setting><level>root</level><name>comments</name><value>0</value></setting>
@@ -224,11 +236,17 @@ def generate_moodle_backup_xml(processed_activities, sections, now, backup_id,
 
     for act_id, m_type, _, _ in processed_activities:
         setting_name = f"{m_type}_{act_id}"
+        # Wiki ist der einzige Modultyp, bei dem Moodles eigenes Restore
+        # (restore_wiki_stepslib.php) den kompletten Seiteninhalt hinter
+        # userinfo versteckt - ohne userinfo=1 bliebe jede Seite unbeachtet,
+        # egal was in wiki.xml steht. Enthält trotzdem keine echten OLAT-
+        # Autor:innen (userid bleibt in wiki_builder.py überall 0).
+        userinfo = 1 if m_type == "wiki" else 0
         xml += f"""
       <setting><level>activity</level><activity>{setting_name}</activity>""" \
                f"""<name>{setting_name}_included</name><value>1</value></setting>
       <setting><level>activity</level><activity>{setting_name}</activity>""" \
-               f"""<name>{setting_name}_userinfo</name><value>0</value></setting>"""
+               f"""<name>{setting_name}_userinfo</name><value>{userinfo}</value></setting>"""
 
     xml += """
     </settings>

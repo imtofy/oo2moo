@@ -57,11 +57,6 @@ def validate_moodle_backup_integrity(temp_dir: str):
     if directory_nodes == 0:
         print("[DEBUG] FEHLER: Keine Verzeichnisknoten (filename='.') in files.xml – Moodle verwirft alle Dateien.")
 
-    activities_dir = os.path.join(temp_dir, "activities")
-    if not os.path.exists(activities_dir):
-        print("[DEBUG] Validierung abgeschlossen.\n")
-        return
-
     skip_files = {'module.xml', 'inforef.xml', 'roles.xml', 'grade_history.xml'}
 
     # Alle von Aktivitäten tatsächlich beanspruchten Kontext-IDs sammeln, um
@@ -69,6 +64,27 @@ def validate_moodle_backup_integrity(temp_dir: str):
     # wenn ein Baustein mitten in der Verarbeitung abstürzt: sein context.xml
     # ist schon geschrieben, die Aktivität aber verworfen).
     used_context_ids = set()
+
+    # Blöcke (course/blocks/...) liegen NICHT unter activities/ - ohne diesen
+    # eigenen Scan würde jeder Block-Kontext fälschlich als "verwaist"
+    # gemeldet, obwohl block.xml ihn ganz normal referenziert.
+    blocks_dir = os.path.join(temp_dir, "course", "blocks")
+    if os.path.exists(blocks_dir):
+        for block_folder in os.listdir(blocks_dir):
+            block_xml_path = os.path.join(blocks_dir, block_folder, "block.xml")
+            if not os.path.exists(block_xml_path):
+                continue
+            try:
+                block_root = ET.parse(block_xml_path).getroot()
+            except ET.ParseError:
+                continue
+            if block_root.get('contextid'):
+                used_context_ids.add(block_root.get('contextid'))
+
+    activities_dir = os.path.join(temp_dir, "activities")
+    if not os.path.exists(activities_dir):
+        print("[DEBUG] Validierung abgeschlossen.\n")
+        return
 
     for act_folder in os.listdir(activities_dir):
         act_path = os.path.join(activities_dir, act_folder)

@@ -168,6 +168,19 @@ def sanitize_for_moodle(raw_html: str, link_map: dict | None = None) -> tuple[st
     for tag in soup(["script", "meta", "head", "title"]):
         tag.decompose()
 
+    for img in soup.find_all('img', class_=re.compile(r'^o_emoticons_')):
+        # OLATs Editor fügt Emoticons als <img src=".../transparent.gif"
+        # class="o_emoticons_xyz"> ein - das eigentliche Smiley-Bild kommt
+        # NUR aus OLATs eigenem CSS-Sprite (background-image über die
+        # Klasse), transparent.gif ist bloß ein 1x1-Platzhalter. Weder die
+        # Klasse noch das echte Sprite existieren in Moodle - das Bild bliebe
+        # so oder so unsichtbar, würde aber einen nie auflösbaren
+        # @@PLUGINFILE@@-Verweis auf eine Datei hinterlassen, die es im
+        # Kurs-Export gar nicht gibt (transparent.gif ist ein OLAT-
+        # Systemasset, kein Kursinhalt). Deshalb komplett entfernen statt
+        # als Asset-Pfad zu behandeln.
+        img.decompose()
+
     for p in soup.find_all('p'):
         text_content = p.get_text(strip=True).replace('\xa0', '')
         if not text_content and not p.find(['img', 'iframe', 'video', 'audio', 'figure', 'table']):

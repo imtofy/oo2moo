@@ -37,10 +37,10 @@ def modify_subsection_xml(filepath: str, subsection_instance_id: int, module_id:
     module_id!) - ein echter Moodle-Export (Files/moodle_musterkurs) zeigt
     <activity id="708" moduleid="215149"><subsection id="708">, also id ==
     der Instanz-ID der subsection, moduleid separat die course_modules-ID.
-    Mit id==module_id (der ursprüngliche Bug hier) findet Moodles Restore
-    beim Auflösen von section.xml's <itemid> keine passende Aktivität mehr -
-    die Sektion verliert ihre Verknüpfung und landet als leerer, nicht
-    zugeordneter "Neuer Abschnitt" im Kurs, bei jedem Unterabschnitt."""
+    Mit id==module_id findet Moodles Restore beim Auflösen von section.xml's
+    <itemid> keine passende Aktivität mehr - die Sektion verliert ihre
+    Verknüpfung und landet als leerer, nicht zugeordneter "Neuer Abschnitt"
+    im Kurs, bei jedem Unterabschnitt."""
     tree = ET.parse(filepath)
     root = tree.getroot()
     root.set('id', str(subsection_instance_id))
@@ -62,7 +62,7 @@ def modify_subsection_xml(filepath: str, subsection_instance_id: int, module_id:
 
 def modify_activity_xml(filepath: str, modulename: str, module_id: int, context_id: int,
                         title: str, now: int, original_olat_type: str, is_fallback: bool,
-                        html_content: str, node_url: str = ""):
+                        html_content: str, node_url: str = "", description_html: str = ""):
     """Füllt die aktivitätsspezifische XML (z.B. page.xml) mit dem konvertierten Inhalt.
 
     title muss roh/unescaped übergeben werden - ElementTree escaped beim
@@ -72,6 +72,13 @@ def modify_activity_xml(filepath: str, modulename: str, module_id: int, context_
     erst nach einmal Öffnen+Speichern). is_fallback stellt einen rot
     hervorgehobenen Warnhinweis voran. modulename='page' schreibt in
     <content> statt <intro>, alle anderen Typen ins <intro>-Feld.
+
+    description_html ist die separat aufbereitete OLAT-Beschreibung (siehe
+    node_processor.build_node_content) - nur bei modulename='page' relevant:
+    landet dort im <intro>-Feld (Info-Block, im Template bereits über
+    showdescription/printintro aktiv), getrennt vom eigentlichen
+    Seiteninhalt in <content>. Bei jedem anderen Modultyp bleibt es beim
+    bisherigen Verhalten (html_content bereits inkl. Beschreibung → <intro>).
     """
     tree = ET.parse(filepath)
     root = tree.getroot()
@@ -127,7 +134,7 @@ def modify_activity_xml(filepath: str, modulename: str, module_id: int, context_
 
             intro_node = module_node.find('intro')
             if intro_node is not None:
-                intro_node.text = ""
+                intro_node.text = description_html
         else:
             intro_node = module_node.find('intro')
             if intro_node is not None:

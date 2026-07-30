@@ -27,7 +27,7 @@ from config import (OLAT_INPUT_FILE, MOODLE_OUTPUT_FILE, OLAT_TO_MOODLE_MAPPING,
 from conversion.manifest import CourseManifest
 from conversion.olat_parser import parse_olat_export, MAX_SECTION_DEPTH
 from conversion.moodle_xml import (modify_activity_xml, modify_module_xml, rewrite_inforef_xml,
-                                   set_forum_announcement_type, modify_subsection_xml)
+                                   set_forum_announcement_type)
 from conversion.file_manager import write_xml, FileManager
 from conversion.node_processor import build_node_content
 from conversion.html_cleaner import MODULE_VIEW_TOKENS
@@ -48,6 +48,9 @@ from conversion.conversion_report import (build_unsupported_placeholder_html,
 from qti import qti_pipeline
 from qti import qti_quiz_builder
 from conversion import cp_book_builder
+from conversion import wiki_builder
+from conversion import block_builder
+from conversion.section_builder import SectionBuilder
 
 if hasattr(sys.stdout, "reconfigure"):
     # Windows-Konsole steht oft auf cp850/cp1252 - ohne das würden Umlaute
@@ -229,35 +232,17 @@ def convert_olat_to_moodle(olat_zip_path, output_mbz_path):
     # Erfolgs-Tabelle im Systemprotokoll (siehe convert_olat_to_moodle unten).
     transferred_elements = []
     context_id_counter = 10001
-    sections = {}
-    # OLAT-STCourseNode-Ident → Moodle-section_id, die dieser Struktur-
-    # Knoten öffnet (siehe parent_st_idents in olat_parser.py).
-    st_section_map = {}
-    next_section_id = 0
-    # Eigener, weit entfernter Nummernkreis für Unterabschnitte (Moodle-
-    # course_sections.section, das <number> in section.xml) - getrennt vom
-    # Nummernkreis der normalen Abschnitte oben. Grund: Moodles eigenes
-    # Restore verschiebt JEDEN Unterabschnitt beim Wiederherstellen ohnehin
-    # ans Ende der Abschnitts-Reihenfolge (restore_section_structure_step::
-    # process_section() in Moodle-Core setzt section->section komplett neu,
-    # unsere <number> wird für Unterabschnitte also nie übernommen) - liegt
-    # eine Unterabschnitts-Nummer aber ZWISCHEN zwei normalen Abschnitten
-    # (z.B. Abschnitt 5, Unterabschnitt 6, Abschnitt 7), reißt das Verschieben
-    # eine Lücke in die normale Abschnittsfolge, die Moodle danach mit
-    # leeren "Neuer Abschnitt"-Plätzen auffüllt - genau die Lücken, die wir
-    # in echten Kursen gesehen haben. Mit einem eigenen, weit über der
-    # normalen Abschnittszahl liegenden Nummernkreis für Unterabschnitte
-    # bleibt die normale Abschnittsfolge lückenlos, egal wie viele
-    # Unterabschnitte dazwischen "eigentlich" lägen.
-    next_subsection_id = 10_000
-    allgemein_section_id = None
+    # Eigener Nummernkreis für Block-Instanzen (course/blocks/...) - komplett
+    # unabhängig von Section-/Modul-IDs, da Blöcke nie in einer Section-
+    # Sequenz referenziert werden, sondern nur über ihren eigenen Ordner.
+    next_block_id = 0
+    has_blocks = False
     # Eigener ID-Raum für Unterabschnitt-Aktivitäten: course_modules-IDs
     # 1..len(nodes) sind schon an die OLAT-Knoten vergeben, Systemprotokoll/
     # Verwaiste-Dateien nutzen ab len(nodes)+1 - Unterabschnitte entstehen
     # aber WÄHREND der Hauptschleife und brauchen daher einen eigenen
     # laufenden Zähler, der danach an write_protocol_activities übergeben wird.
     next_free_module_id = len(nodes) + 1
-    subsection_instance_counter = 0
     # Gemeinsamer ID-Raum für alle QTI-Fragen/Kategorien/Quiz-Instanzen im
     # ganzen Kurslauf (verhindert doppelte IDs, falls mehrere Tests im Kurs
     # vorkommen) - siehe qti_quiz_builder.py.
@@ -266,27 +251,6 @@ def convert_olat_to_moodle(olat_zip_path, output_mbz_path):
     # Fragen-Bilanz je Test-Baustein (Soll-Ist-Validierung am Ende) - wird von
     # build_quiz_activity befüllt, siehe conversion_validator.py.
     quiz_reports = []
-
-    def _get_or_create_allgemein_section():
-        """Fallback-Abschnitt für Bausteine ohne umschließenden Struktur-Knoten."""
-        nonlocal allgemein_section_id, next_section_id
-        if allgemein_section_id is None:
-            next_section_id += 1
-            allgemein_section_id = next_section_id
-            sections[allgemein_section_id] = {
-                "id": allgemein_section_id, "title": "Allgemein", "module_ids": [],
-                "component": None, "itemid": None, "parentcmid": None, "modname": None,
-            }
-        return allgemein_section_id
-
-    # noinspection PyShadowingNames
-    def _resolve_target_section(parent_st_idents):
-        """Ermittelt die Moodle-section_id, in die ein Baustein anhand seiner
-        umschließenden Struktur-Knoten-Kette gehört (siehe st_section_map)."""
-        if not parent_st_idents:
-            return _get_or_create_allgemein_section()
-        target = st_section_map.get(parent_st_idents[-1])
-        return target if target is not None else _get_or_create_allgemein_section()
 
     # Vorab-Pass für kursinterne Verweise (OLAT-ident → Moodle-Modul-ID/Typ),
     # muss VOR der Hauptschleife stehen, weil ein früher Baustein auf einen
@@ -328,6 +292,7 @@ def convert_olat_to_moodle(olat_zip_path, output_mbz_path):
 
     with tempfile.TemporaryDirectory() as temp_dir:
         file_mgr = FileManager(temp_dir)
+        section_builder = SectionBuilder(temp_dir, template_mapping, now)
 
         os.makedirs(os.path.join(temp_dir, "contexts", "context_1"), exist_ok=True)
         write_xml(os.path.join(temp_dir, "contexts", "context_1", "context.xml"),
@@ -349,68 +314,77 @@ def convert_olat_to_moodle(olat_zip_path, output_mbz_path):
                 # Container-Knoten (siehe elif olat_type == 'st' unten, der die
                 # 🔀-Markierung für den Knoten selbst setzt) - macht diesen
                 # Zusammenhang direkt im Kurs sichtbar, nicht nur im Systemprotokoll.
-                node_title = f"{FLATTENED_CHILD_MARKER} {node_title}"
+                node_title = f"{FLATTENED_CHILD_MARKER} {node_title} {FLATTENED_CHILD_MARKER}"
 
-            if node.get('has_children') and len(parent_st_idents) < MAX_SECTION_DEPTH:
-                # Nicht nur 'st' (reiner Struktur-Container) öffnet eine neue
-                # Ebene, sondern jeder Knoten mit eigenen Kindern (z.B. eine
-                # Einzelseite mit angehängtem Forum) - der Knoten fällt unten
-                # trotzdem normal durch und bekommt zusätzlich seine eigene
-                # Aktivität; die landet dann in seinem eigenen neuen
-                # Abschnitt/Unterabschnitt (current_target_section_id unten).
-                if len(parent_st_idents) == 0:
-                    next_section_id += 1
-                    new_section_id = next_section_id
-                    sections[new_section_id] = {
-                        "id": new_section_id, "title": node.get('title', f'Abschnitt {new_section_id}'),
-                        "module_ids": [], "component": None, "itemid": None,
-                        "parentcmid": None, "modname": None,
-                    }
-                else:
-                    next_subsection_id += 1
-                    new_section_id = next_subsection_id
-                    # Verschachtelter Container (Ebene 2) → Moodle-Unterabschnitt
-                    # (mod_subsection, Core seit Moodle 4.4). Die Aktivität
-                    # selbst liegt im umschließenden Abschnitt, der neue
-                    # Abschnitt ist über component/itemid mit ihr verknüpft
-                    # (siehe generate_section_xml) - technisch bleiben alle
-                    # Abschnitte eine flache Liste, Moodle zeigt sie nur
-                    # optisch eingerückt an.
-                    subsection_instance_counter += 1
-                    subsection_module_id = next_free_module_id
-                    next_free_module_id += 1
-                    parent_section_id = st_section_map[parent_st_idents[0]]
+            is_top_level = len(parent_st_idents) == 0
+            # JEDER Top-Level-Struktur-Knoten wird konsequent zu einer eigenen
+            # echten Section, auch ganz ohne Kinder (z.B. eine Struktur, die
+            # nur als Platzhalter für später angelegt wurde) - eine leere
+            # Struktur ist trotzdem eine echte, vom Kursautor angelegte
+            # Sektion und keine "zu tief verschachtelt"-Situation (siehe
+            # elif-Zweig unten, der ausschließlich die echte Tiefenüberschreitung
+            # behandelt).
+            opens_top_section = olat_type == 'st' and is_top_level
+            # Alles andere mit eigenen Kindern bekommt statt einer Top-Level-
+            # Section eine Subsection - bei 'st' NUR wenn verschachtelt (ein
+            # Top-Level-'st' läuft ja schon oben durch); ein has_children-
+            # Knoten OHNE eigenen 'st'-Typ (z.B. eine Einzelseite mit echten
+            # Unterseiten) dagegen auf JEDER erlaubten Tiefe, auch direkt auf
+            # Kursebene. Subsections dürfen aber selbst keine weitere
+            # Subsection enthalten (Moodle-Core verbietet das explizit,
+            # content_item_service.php: "no delegated section into a
+            # delegated section"), daher die MAX_SECTION_DEPTH-Grenze.
+            opens_nested_subsection = len(parent_st_idents) < MAX_SECTION_DEPTH and (
+                (olat_type == 'st' and not is_top_level) or
+                (olat_type != 'st' and node.get('has_children'))
+            )
 
-                    sub_context_id = context_id_counter
-                    context_id_counter += 1
-                    sub_a_path = os.path.join(temp_dir, "activities", f"subsection_{subsection_module_id}")
-                    shutil.copytree(template_mapping["subsection"], sub_a_path)
-                    modify_module_xml(os.path.join(sub_a_path, "module.xml"),
-                                      subsection_module_id, parent_section_id, now)
-                    modify_subsection_xml(os.path.join(sub_a_path, "subsection.xml"),
-                                          subsection_instance_counter, subsection_module_id,
-                                          sub_context_id, node_title, now)
-                    os.makedirs(os.path.join(temp_dir, "contexts", f"context_{sub_context_id}"), exist_ok=True)
-                    write_xml(os.path.join(temp_dir, "contexts", f"context_{sub_context_id}", "context.xml"),
-                              f'<context id="{sub_context_id}" contextlevel="70" '
-                              f'instanceid="{subsection_module_id}"></context>')
+            if opens_top_section:
+                new_section_id = section_builder.open_top_section(node)
 
-                    sections[new_section_id] = {
-                        "id": new_section_id, "title": node.get('title', f'Unterabschnitt {new_section_id}'),
-                        "module_ids": [], "component": "mod_subsection", "itemid": subsection_instance_counter,
-                        "parentcmid": subsection_module_id, "modname": "subsection",
-                    }
-                    sections[parent_section_id]["module_ids"].append(subsection_module_id)
-                    processed_activities.append(
-                        (subsection_module_id, "subsection", parent_section_id, node_title))
+                # Eigene Beschreibung des Struktur-Knotens wandert in die
+                # Abschnitts-Zusammenfassung statt in eine separate Label-
+                # Aktivität (siehe generate_section_xml) - bei einer echten
+                # Top-Level-Section gibt es dafür keinen Moodle-seitigen
+                # Vorbehalt. Anders bei Subsections (siehe opens_nested_
+                # subsection unten): Moodle migriert dort selbst gerade WEG
+                # von Summary-Beschreibungen hin zu einer Label-Aktivität
+                # (mod_subsection/classes/task/migrate_subsection_descriptions_
+                # task.php, Core-Quellcode geprüft) - deshalb bleibt es dort
+                # bewusst bei der bisherigen Label-Aktivität.
+                summary_html, summary_attachments, summary_removed_links, _, _, _ = (
+                    build_node_content(node, manifest, "label", olat_type, link_map))
+                if summary_removed_links:
+                    removed_links_log.append({'title': node_title, 'links': summary_removed_links})
+                for attach in summary_attachments:
+                    relpath = attach.get("relpath", "")
+                    file_mgr.add_moodle_file(
+                        source_content=attach["data"], filename=attach["name"],
+                        contextid=1, component="course", filearea="section",
+                        itemid=new_section_id, now=now,
+                        filepath=f"/{relpath}/" if relpath else "/")
+                section_builder.set_section_summary(new_section_id, summary_html)
+                continue
+            elif opens_nested_subsection:
+                subsection_module_id = next_free_module_id
+                next_free_module_id += 1
+                sub_context_id = context_id_counter
+                context_id_counter += 1
 
-                st_section_map[node['ident']] = new_section_id
+                new_section_id, parent_section_id, _subsection_title = section_builder.open_subsection(
+                    node, node_title, olat_type, parent_st_idents, subsection_module_id, sub_context_id)
+                # node_title (nicht das intern in subsection.xml verwendete
+                # subsection_title mit "UNTERABSCHNITT: "-Zusatz) - unverändert
+                # ggü. dem Code vor der SectionBuilder-Auslagerung, betrifft nur
+                # die rein informative <title> im Backup-Manifest.
+                processed_activities.append(
+                    (subsection_module_id, "subsection", parent_section_id, node_title))
                 current_target_section_id = new_section_id
             elif olat_type == 'st':
                 print(f"[!] Struktur '{node_title}' liegt tiefer als {MAX_SECTION_DEPTH} Ebenen "
                       f"verschachtelt – Moodle unterstützt das nicht, Inhalt bleibt im "
                       f"umschließenden Abschnitt.")
-                current_target_section_id = _resolve_target_section(parent_st_idents)
+                current_target_section_id = section_builder.resolve_target_section(parent_st_idents)
 
                 boundary_link = None
                 if "page" in template_mapping:
@@ -431,12 +405,12 @@ def convert_olat_to_moodle(olat_zip_path, output_mbz_path):
                     shutil.copytree(template_mapping["page"], boundary_a_path)
                     modify_module_xml(os.path.join(boundary_a_path, "module.xml"), i,
                                       current_target_section_id, now)
-                    boundary_title = f"{FLATTENED_BOUNDARY_MARKER} {node_title}"
+                    boundary_title = f"{FLATTENED_BOUNDARY_MARKER} {node_title} {FLATTENED_BOUNDARY_MARKER}"
                     modify_activity_xml(os.path.join(boundary_a_path, "page.xml"), "page", i,
                                         boundary_context_id, boundary_title, now, olat_type, False,
                                         build_flattened_boundary_html(), "")
                     rewrite_inforef_xml(os.path.join(boundary_a_path, "inforef.xml"), [])
-                    sections[current_target_section_id]["module_ids"].append(i)
+                    section_builder.append_module(current_target_section_id, i)
                     processed_activities.append((i, "page", current_target_section_id, boundary_title))
                     boundary_link = f"$@PAGEVIEWBYID*{i}@$"
 
@@ -446,7 +420,7 @@ def convert_olat_to_moodle(olat_zip_path, output_mbz_path):
                 })
                 continue
             else:
-                current_target_section_id = _resolve_target_section(parent_st_idents)
+                current_target_section_id = section_builder.resolve_target_section(parent_st_idents)
 
             if olat_type in SKIPPED_OLAT_TYPES:
                 # Bekommt trotzdem eine echte Aktivität an seiner Original-
@@ -472,11 +446,12 @@ def convert_olat_to_moodle(olat_zip_path, output_mbz_path):
                     shutil.copytree(template_mapping["page"], a_path)
                     modify_module_xml(os.path.join(a_path, "module.xml"), i, current_target_section_id, now)
                     modify_activity_xml(os.path.join(a_path, "page.xml"), "page", i, context_id,
-                                        f"⚠️ {node_title}", now, olat_type, False,
+                                        f"{WARNING_SYMBOL} {node_title} {WARNING_SYMBOL}", now, olat_type, False,
                                         build_unsupported_placeholder_html(olat_type), "")
                     rewrite_inforef_xml(os.path.join(a_path, "inforef.xml"), [])
-                    sections[current_target_section_id]["module_ids"].append(i)
-                    processed_activities.append((i, "page", current_target_section_id, f"⚠️ {node_title}"))
+                    section_builder.append_module(current_target_section_id, i)
+                    processed_activities.append(
+                        (i, "page", current_target_section_id, f"{WARNING_SYMBOL} {node_title} {WARNING_SYMBOL}"))
                 continue
 
             # Fallback-Ziel bewusst 'page' statt 'label': label-Aktivitäten
@@ -499,13 +474,13 @@ def convert_olat_to_moodle(olat_zip_path, output_mbz_path):
                 # ganz unten NACH erfolgreichem Aufbau - sonst gäbe es bei einem
                 # späteren Konvertierungsfehler zwei Einträge für denselben Knoten.
                 fallback_location = _format_location(node_title, parent_st_idents)
-                node_title = f"{UNRECOGNIZED_TYPE_MARKER} {node_title}"
+                node_title = f"{UNRECOGNIZED_TYPE_MARKER} {node_title} {UNRECOGNIZED_TYPE_MARKER}"
 
             if olat_type == "document" and m_type == "folder":
                 # Zum Ordner gewandelter Office-Baustein (siehe
                 # _resolve_moodle_type) - sichtbar kennzeichnen, sonst nicht
                 # von einem echten OLAT-Ordner-Baustein (bc/pf) zu unterscheiden.
-                node_title = f"{OFFICE_DOCUMENT_MARKER} {node_title}"
+                node_title = f"{OFFICE_DOCUMENT_MARKER} {node_title} {OFFICE_DOCUMENT_MARKER}"
 
             src_dir = template_mapping.get(m_type)
             if not src_dir:
@@ -522,7 +497,7 @@ def convert_olat_to_moodle(olat_zip_path, output_mbz_path):
                 continue
 
             try:
-                html_content, unique_attachments, node_removed_links, empty_dirs, content_issue = (
+                html_content, unique_attachments, node_removed_links, empty_dirs, content_issue, description_html = (
                     build_node_content(node, manifest, m_type, olat_type, link_map))
                 if node_removed_links:
                     removed_links_log.append({'title': node_title, 'links': node_removed_links})
@@ -612,6 +587,41 @@ def convert_olat_to_moodle(olat_zip_path, output_mbz_path):
                         # Systemprotokoll vermerken.
                         content_issue = "Content-Package nicht auflösbar"
 
+                if olat_type == "cal":
+                    # OLATs Kalender-Baustein hat kein Aktivitäts-Äquivalent,
+                    # aber Moodles eingebauter 'calendar_month'-Block zeigt
+                    # denselben Monatskalender - anders als eine Aktivität
+                    # hängt ein Block aber kursweit in der Seitenleiste, nie
+                    # an dieser Stelle im Kursverlauf (siehe block_builder.py).
+                    next_block_id += 1
+                    block_id = next_block_id
+                    block_context_id = context_id_counter
+                    context_id_counter += 1
+                    block_dir = os.path.join(temp_dir, "course", "blocks", f"calendar_month_{block_id}")
+                    os.makedirs(block_dir, exist_ok=True)
+                    write_xml(os.path.join(block_dir, "block.xml"),
+                              block_builder.build_calendar_block_xml(block_id, block_context_id, now))
+                    write_xml(os.path.join(block_dir, "comments.xml"), "<comments></comments>")
+                    write_xml(os.path.join(block_dir, "inforef.xml"), "<inforef></inforef>")
+                    write_xml(os.path.join(block_dir, "roles.xml"),
+                              "<roles><role_overrides></role_overrides>"
+                              "<role_assignments></role_assignments></roles>")
+                    os.makedirs(os.path.join(temp_dir, "contexts", f"context_{block_context_id}"), exist_ok=True)
+                    write_xml(os.path.join(temp_dir, "contexts", f"context_{block_context_id}", "context.xml"),
+                              f'<context id="{block_context_id}" contextlevel="80" '
+                              f'instanceid="{block_id}"></context>')
+                    has_blocks = True
+
+                wiki_result = None
+                if olat_type == "wiki" and m_type == "wiki":
+                    wiki_result = wiki_builder.build_wiki_activity(node, manifest, context_id, i, now)
+                    if wiki_result is None:
+                        # Kein Fallback-Zwang wie beim Buch: das kopierte
+                        # Wiki-Template startet mit leerem <subwikis></subwikis>,
+                        # bleibt also auch unverändert ein gültiges, bloß
+                        # leeres Wiki (siehe generischer Pfad unten).
+                        content_issue = "Wiki-Paket nicht auflösbar"
+
                 if quiz_result is not None:
                     # Echte Fragen statt der leeren generischen Quiz-Hülle -
                     # quiz.xml wird komplett neu geschrieben statt gepatcht.
@@ -645,16 +655,36 @@ def convert_olat_to_moodle(olat_zip_path, output_mbz_path):
                             i, context_id, node_title, html_content, now, qti_id_gen)
                         write_xml(os.path.join(a_path, "book.xml"), fallback_xml)
                         rewrite_inforef_xml(os.path.join(a_path, "inforef.xml"), node_file_ids)
+                elif m_type == "wiki" and wiki_result is not None:
+                    # wiki.xml wird frisch geschrieben statt gepatcht - echte
+                    # Seiten lassen sich nicht in die leere <subwikis>-Vorlage
+                    # nachträglich einfügen.
+                    write_xml(os.path.join(a_path, "wiki.xml"), wiki_result["wiki_xml"])
+                    rewrite_inforef_xml(os.path.join(a_path, "inforef.xml"), node_file_ids)
                 else:
-                    if m_type == "label" and olat_type != 'st':
+                    if m_type == "label" and olat_type == "cal":
+                        # Kalender bekommt oben bereits einen echten
+                        # 'calendar_month'-Block in der Kurs-Seitenleiste -
+                        # kein Funktionsverlust, nur eine andere Position als
+                        # im OLAT-Baum (Moodle-Blöcke sind immer kursweit,
+                        # nie an eine bestimmte Stelle im Kursverlauf
+                        # gebunden). Dieser Textbaustein hier bleibt nur als
+                        # sichtbarer Platzhalter für die ursprüngliche Stelle.
+                        html_content = (
+                            '<p><strong>Hinweis:</strong> Der Kalender wurde als eigener '
+                            'Moodle-Block in der Kurs-Seitenleiste ergänzt (siehe rechte/'
+                            'linke Spalte der Kursseite) - nicht an dieser Stelle im '
+                            'Kursverlauf, da Moodle-Blöcke immer kursweit sind, nie an eine '
+                            'bestimmte Position gebunden.</p>'
+                        ) + html_content
+                    elif m_type == "label" and olat_type != 'st':
                         # 'label' steht in OLAT_TO_MOODLE_MAPPING nie für einen
                         # echten OLAT-Bausteintyp, sondern immer nur als
                         # Auffangbecken für Typen ohne Moodle-Äquivalent (co,
-                        # en, members, cal, checklist, ms, den) - Titel/Text
+                        # en, members, checklist, ms, den) - Titel/Text
                         # bleibt erhalten, die eigentliche Funktion (E-Mail
-                        # verschicken, Einschreiben, Kalendereinträge, ...)
-                        # geht komplett verloren. Darf deshalb nicht als
-                        # ✅ durchgehen.
+                        # verschicken, Einschreiben, ...) geht komplett
+                        # verloren. Darf deshalb nicht als ✅ durchgehen.
                         content_issue = "Kein Moodle-Baustein mit eigener Funktion – nur Titel als Textfeld übernommen"
                         olat_name = OLAT_NAMES.get(olat_type, olat_type)
                         html_content = (
@@ -678,7 +708,7 @@ def convert_olat_to_moodle(olat_zip_path, output_mbz_path):
                         ) + html_content
                     modify_activity_xml(os.path.join(a_path, f"{m_type}.xml"), m_type, i, context_id,
                                         node_title, now, olat_type, is_fallback, html_content,
-                                        node.get('url', ''))
+                                        node.get('url', ''), description_html)
                     if olat_type == 'info' and m_type == 'forum':
                         # OLATs "Mitteilungen" entsprechen inhaltlich Moodles
                         # Ankündigungen - laufen aber über dasselbe forum-
@@ -687,7 +717,7 @@ def convert_olat_to_moodle(olat_zip_path, output_mbz_path):
                         set_forum_announcement_type(os.path.join(a_path, f"{m_type}.xml"))
                     rewrite_inforef_xml(os.path.join(a_path, "inforef.xml"), node_file_ids)
 
-                sections[current_target_section_id]["module_ids"].append(i)
+                section_builder.append_module(current_target_section_id, i)
                 processed_activities.append((i, m_type, current_target_section_id, node_title))
                 view_token = MODULE_VIEW_TOKENS.get(m_type)
                 node_link = f"$@{view_token}*{i}@$" if view_token else None
@@ -775,20 +805,13 @@ def convert_olat_to_moodle(olat_zip_path, output_mbz_path):
 
         if (skipped_elements or orphaned_files or removed_links_log or flattened_structures
                 or transferred_elements):
-            # next_section_id statt max(sections)+1: Unterabschnitte liegen
-            # bewusst in einem weit entfernten eigenen Nummernkreis (siehe
-            # next_subsection_id oben) - max(sections) läge also fast immer
-            # dort drin, das Systemprotokoll bekäme dann selbst eine
-            # riesige Abschnittsnummer statt normal ans Ende der echten
-            # Abschnittsfolge angehängt zu werden.
-            next_section_id += 1
-            protocol_section_id = next_section_id
-            sections[protocol_section_id] = {
-                "id": protocol_section_id,
-                "title": "Systemprotokoll (Konvertierung)",
-                "module_ids": [], "component": None, "itemid": None,
-                "parentcmid": None, "modname": None,
-            }
+            # section_builder.create_section() statt max(sections)+1:
+            # Unterabschnitte liegen bewusst in einem weit entfernten eigenen
+            # Nummernkreis (siehe SectionBuilder.next_subsection_id) -
+            # max(sections) läge also fast immer dort drin, das
+            # Systemprotokoll bekäme dann selbst eine riesige Abschnittsnummer
+            # statt normal ans Ende der echten Abschnittsfolge angehängt zu werden.
+            protocol_section_id = section_builder.create_section("Systemprotokoll (Konvertierung)")
             total_content_count = sum(1 for n in nodes if n.get('type') != 'st')
             if len(transferred_elements) > total_content_count:
                 # Darf strukturell nie vorkommen (Zähler > Nenner ergibt keinen
@@ -799,7 +822,7 @@ def convert_olat_to_moodle(olat_zip_path, output_mbz_path):
                       f"das ist unmöglich (mehr übertragen als insgesamt vorhanden). "
                       f"Bitte Zähl-Logik in main.py prüfen, BEVOR diese .mbz verwendet wird.")
             write_protocol_activities(
-                temp_dir, template_mapping, file_mgr, sections, processed_activities,
+                temp_dir, template_mapping, file_mgr, section_builder.sections, processed_activities,
                 skipped_elements, orphaned_files, removed_links_log, flattened_structures,
                 transferred_elements, total_content_count,
                 protocol_section_id, next_free_module_id, context_id_counter, now
@@ -811,21 +834,23 @@ def convert_olat_to_moodle(olat_zip_path, output_mbz_path):
         valid_module_ids = {act_id for act_id, _, _, _ in processed_activities}
         _neutralize_dead_internal_links(temp_dir, valid_module_ids)
 
-        for sec_id, sec_data in sections.items():
+        for sec_id, sec_data in section_builder.sections.items():
             sec_dir = os.path.join(temp_dir, "sections", f"section_{sec_id}")
             os.makedirs(sec_dir, exist_ok=True)
             write_xml(os.path.join(sec_dir, "inforef.xml"), "<inforef></inforef>")
             write_xml(os.path.join(sec_dir, "roles.xml"), "<roles></roles>")
             write_xml(os.path.join(sec_dir, "section.xml"),
                       generate_section_xml(sec_id, sec_id, now, sec_data["title"], sec_data["module_ids"],
-                                          component=sec_data.get("component"), itemid=sec_data.get("itemid")))
+                                          component=sec_data.get("component"), itemid=sec_data.get("itemid"),
+                                          summary=sec_data.get("summary", "")))
 
         print("[DEBUG] Schreibe Metadaten...")
         write_xml(os.path.join(temp_dir, "files.xml"), file_mgr.generate_files_xml())
         write_xml(os.path.join(temp_dir, "moodle_backup.xml"),
-                  generate_moodle_backup_xml(processed_activities, sections, now, backup_id,
+                  generate_moodle_backup_xml(processed_activities, section_builder.sections, now, backup_id,
                                              course_fullname, course_shortname,
-                                             has_questions=bool(all_question_categories_xml)))
+                                             has_questions=bool(all_question_categories_xml),
+                                             has_blocks=has_blocks))
         create_empty_meta_files(temp_dir, question_categories_xml='\n'.join(all_question_categories_xml))
 
         validate_moodle_backup_integrity(temp_dir)

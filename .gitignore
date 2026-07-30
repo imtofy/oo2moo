@@ -1,1 +1,39 @@
-Olat_to_Moodle.exe
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# IDE
+.idea/
+.pytest_cache/
+
+# Build-Artefakte (PyInstaller etc.)
+build/
+dist/
+*.spec.bak
+
+# Kursdaten & große Original-Templates (Binärdaten, kein Code)
+# -> bei Bedarf einzelne Dateien mit 'git add -f Files/...' trotzdem aufnehmen
+Files/
+
+# Testkurs-ZIPs im Repo-Root - enthalten unanonymisierte echte Kursinhalte
+# (siehe scripts/merge_olat_courses.py), dürfen nie ins Repo.
+/merged_test_kurs*.zip
+
+# Encrypted-Build-Zweig (CodeEnigma) - wird nicht mehr verwendet, nur noch
+# lokales Experiment, nicht Teil der eigentlichen Distribution.
+codeenigma_build/
+
+# HINWEIS: olat_to_moodle/src/moodle_musterkurs/ ist die auf ~770 KB
+# ausgedünnte Build-Kopie (nur moodle_backup.xml + activities/, ohne den
+# 32-MB-files/-Ballast) und wird BEWUSST mitversioniert, damit der
+# .exe-Build reproduzierbar bleibt. Das große 33-MB-Original liegt unter
+# Files/moodle_musterkurs (ignoriert).
+
+# build_gui.py (Build-Startzentrale) ist bewusst mitversioniert.
+
+# tools/ ist Ablage für lokale Entwicklungs-Werkzeuge (Assets/Testdaten
+# bauen) - nicht Teil des eigentlichen Konverters, nie Ziel der Distribution,
+# deshalb komplett ignoriert. Echte, dauerhaft gebrauchte Skripte (z.B.
+# merge_olat_courses.py) liegen bewusst in scripts/ statt hier.
+olat_to_moodle/tools/
