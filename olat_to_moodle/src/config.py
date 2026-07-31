@@ -96,11 +96,32 @@ MOODLE_SITE_HASH = "00000000000000000000000000000000"
 # OLAT-Typen ohne echtes Moodle-Äquivalent (ohne Plugin) - bekommen keinen
 # normal konvertierten Baustein, sondern eine ⚠️-Warn-Platzhalterseite an
 # ihrer Original-Position im Kurs (siehe main.py, build_unsupported_placeholder_html).
-# 'ep' (Portfolioaufgabe): assign bildet die Portfolio-Semantik nicht ab.
-# 'bigbluebutton'/'adobeconnect': die Meeting-Konfiguration/URL aus OLAT
-# passt nicht zum neuen Moodle-System und muss ohnehin manuell neu
-# eingerichtet werden, deshalb bewusst nicht automatisch übertragen.
-SKIPPED_OLAT_TYPES = {"scorm", "lti", "basiclti", "h5p", "ep", "bigbluebutton", "adobeconnect"}
+# 'ep'/'portfolio' (Portfolioaufgabe): assign bildet die Portfolio-Semantik
+# nicht ab. Zwei Schlüssel für dieselbe Funktion, weil der Typ-String aus dem
+# Java-Klassennamen abgeleitet wird (siehe olat_parser._extract_node_fields)
+# und OLAT die Klasse zwischenzeitlich von EPCourseNode zu PortfolioCourseNode
+# umbenannt hat - je nach OLAT-Version des Exports kommt der eine oder der
+# andere Klassenname vor.
+SKIPPED_OLAT_TYPES = {"scorm", "lti", "basiclti", "h5p", "ep", "portfolio"}
+
+# OLAT-Typen, die genauso wenig migriert werden wie SKIPPED_OLAT_TYPES, aber
+# ohne jede Spur im Kurs selbst - kein Platzhalter, keine Aktivität an der
+# Originalposition, nur ein stiller Eintrag im Systemprotokoll (main.py).
+# 'bigbluebutton'/'adobeconnect': Meeting-Baustein, dessen OLAT-Konfiguration/
+# URL ohnehin nicht zum neuen Moodle-System passt und manuell neu eingerichtet
+# werden muss - ein Platzhalter im Kurs wäre hier nur Lärm ohne Mehrwert.
+# 'den': undokumentiertes, nicht mehr verwendetes altes OLAT-Format, enthält
+# in der Praxis nur noch Datenreste ohne migrationswürdigen Inhalt.
+SILENTLY_SKIPPED_OLAT_TYPES = {"bigbluebutton", "adobeconnect", "den"}
+
+# Grund-Text je SILENTLY_SKIPPED_OLAT_TYPES-Typ für den Systemprotokoll-
+# Eintrag (main.py hängt ihn als ", <Grund>" an den OLAT-Typ, siehe
+# conversion_report._group_block - dieselbe Konvention wie bei "Template fehlt").
+SILENTLY_SKIPPED_REASONS = {
+    "bigbluebutton": "Meeting-Baustein, muss manuell neu eingerichtet werden",
+    "adobeconnect": "Meeting-Baustein, muss manuell neu eingerichtet werden",
+    "den": "Datenreste aus einem alten, nicht mehr verwendeten Format",
+}
 
 # Symbole für die Systemprotokoll-Meldungen (main.py) - alle frei änderbar,
 # Farben/Legendentexte dafür stehen gleich darunter und hängen an denselben
@@ -192,8 +213,10 @@ UNSUPPORTED_TYPE_HELP_LINKS = {
     # haben in Moodle Core keine Entsprechung - eine normale Abgabe (assign)
     # bildet das nicht ab. Link sollte zu einer Anleitung führen, wie man
     # eine vergleichbare Aufgabe mit mehreren Bewertungs-/Feedback-Runden in
-    # Moodle nachbaut.
+    # Moodle nachbaut. 'portfolio' ist derselbe Bausteintyp, nur aus einem
+    # neueren OLAT-Export (siehe SKIPPED_OLAT_TYPES).
     "ep": "",
+    "portfolio": "",
     # Problem: Die BigBlueButton-Meeting-Konfiguration aus OLAT (Server,
     # Raum-ID) passt nicht zum neuen Moodle-System. Link sollte zu einer
     # Anleitung führen, wie man eine neue BigBlueButton-Aktivität in Moodle
@@ -271,7 +294,6 @@ OLAT_TO_MOODLE_MAPPING = {
     "form":             "feedback",
     "podcast":          "url",
     "practice":         "quiz",
-    "den":              "label",
     "topicbroker":      "choice",
     "videotask":        "assign",
     "iqsurv":           "feedback",
@@ -328,6 +350,7 @@ OLAT_NAMES = {
     "wiki":             "Wiki",
     "gta":              "Gruppenaufgabe",
     "ep":               "Portfolioaufgabe",
+    "portfolio":        "Portfolioaufgabe",
     "scorm":            "SCORM-Lerninhalt",
     "ms":               "Bewertung",
     "blog":             "Blog",

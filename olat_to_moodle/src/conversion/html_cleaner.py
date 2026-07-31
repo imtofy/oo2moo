@@ -26,6 +26,16 @@ _BARE_EMAIL_PATTERN = re.compile(r'^[^\s@/]+@[^\s@/]+\.[^\s@/]+$')
 # sich per link_map die Ziel-Aktivität finden.
 _GOTONODE_PATTERN = re.compile(r'gotonode\((\d+)\)')
 
+# OLATs eigenes URL-Schema für Baustein-Ansichtsseiten (/RepositoryEntry/
+# <Kurs-ID>/CourseNode/<Knoten-ID>) - institutionsunabhängig, jede OLAT-
+# Instanz nutzt dasselbe Pfadmuster. Ein per <iframe> direkt im HTML
+# eingebetteter Inhalt (typischerweise H5P), dessen src auf dieses Muster
+# passt, verweist auf die alte OLAT-Quelle zurück und würde nach der
+# Migration ins Leere zeigen.
+_OLAT_SELF_REFERENCE_PATTERN = re.compile(r'/RepositoryEntry/\d+/CourseNode/\d+')
+
+_LOST_EMBED_STYLE = 'color: #00a3a3; font-weight: bold; font-style: italic;'
+
 # Moodle-Modultypen mit eigener Ansichtsseite und ihr Backup-Link-Token.
 # Moodle-Konvention: <MODULNAME_GROSS>VIEWBYID → /mod/<name>/view.php?id=<cmid>,
 # beim Restore auf die neue course_module-ID umgeschrieben. 'label' fehlt
@@ -152,6 +162,11 @@ def sanitize_for_moodle(raw_html: str, link_map: dict | None = None) -> tuple[st
       - repariert blanke E-Mail-Adressen ohne 'mailto:'-Präfix (OLAT-
         Exportfehler) zu echten mailto:-Links, statt sie als Datei-Asset
         zu behandeln.
+      - ersetzt <iframe>-Einbettungen, deren src auf OLATs eigenes
+        RepositoryEntry/CourseNode-Ansichtsschema verweist (typischerweise
+        H5P), durch eine sichtbare Warnung - die Quelle existiert nach der
+        Migration nicht mehr erreichbar, der Verweis wird fürs
+        Systemprotokoll vorgemerkt.
       - benennt <section>/<article>/<aside> zu <div> um (Moodles Editor
         kennt diese HTML5-Tags nicht) und fasst 3+ <br>-Tags zu zweien zusammen.
 
@@ -262,6 +277,24 @@ def sanitize_for_moodle(raw_html: str, link_map: dict | None = None) -> tuple[st
 
         if tag.name == 'video' and 'poster' in tag.attrs:
             _rewrite_asset_attr(tag, 'poster')
+
+        if tag.name == 'iframe' and 'src' in tag.attrs:
+            src = tag.attrs['src']
+            parsed_src = urllib.parse.urlparse(src)
+            if parsed_src.netloc and _OLAT_SELF_REFERENCE_PATTERN.search(parsed_src.path):
+                # Direkt im HTML eingebetteter Inhalt (typischerweise H5P) mit
+                # einer OLAT-eigenen Ansichtsseite als src - die Quelle existiert
+                # nach der Migration nicht mehr erreichbar, es gibt keine
+                # automatische Auflösung dafür. Durch eine sichtbare Warnung
+                # ersetzen statt einen stillen toten iframe zu hinterlassen.
+                removed_links.append({'text': 'Eingebetteter Inhalt (iframe)', 'href': src})
+                warning = soup.new_tag('p')
+                warning.string = ('⚠ Eingebetteter Inhalt konnte nicht automatisch übernommen werden '
+                                  '(verweist auf die alte OLAT-Quelle) - muss in Moodle manuell neu '
+                                  'eingebunden werden.')
+                _apply_style(warning, _LOST_EMBED_STYLE)
+                tag.replace_with(warning)
+                continue
 
         if tag.name == 'a':
             href = tag.attrs.get('href', '')

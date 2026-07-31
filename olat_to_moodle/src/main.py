@@ -20,7 +20,8 @@ import shutil
 import uuid
 
 from config import (OLAT_INPUT_FILE, MOODLE_OUTPUT_FILE, OLAT_TO_MOODLE_MAPPING,
-                    TEMPLATE_DIR, SKIPPED_OLAT_TYPES, STANDALONE_QTI_IDENT,
+                    TEMPLATE_DIR, SKIPPED_OLAT_TYPES, SILENTLY_SKIPPED_OLAT_TYPES,
+                    SILENTLY_SKIPPED_REASONS, STANDALONE_QTI_IDENT,
                     STANDALONE_CP_IDENT, FLATTENED_BOUNDARY_MARKER, FLATTENED_CHILD_MARKER,
                     UNRECOGNIZED_TYPE_MARKER, WARNING_SYMBOL,
                     OFFICE_DOCUMENT_EXTS, OFFICE_DOCUMENT_MARKER, OLAT_NAMES)
@@ -452,6 +453,20 @@ def convert_olat_to_moodle(olat_zip_path, output_mbz_path):
                     section_builder.append_module(current_target_section_id, i)
                     processed_activities.append(
                         (i, "page", current_target_section_id, f"{WARNING_SYMBOL} {node_title} {WARNING_SYMBOL}"))
+                continue
+
+            if olat_type in SILENTLY_SKIPPED_OLAT_TYPES:
+                # Anders als SKIPPED_OLAT_TYPES: keine Platzhalter-Aktivität im
+                # Kurs, nur ein stiller Systemprotokoll-Eintrag - ein Marker an
+                # der Originalposition wäre hier nur Lärm ohne Mehrwert (siehe
+                # SILENTLY_SKIPPED_REASONS in config.py für den Grund je Typ).
+                reason = SILENTLY_SKIPPED_REASONS.get(olat_type, "")
+                type_key = f"{olat_type}, {reason}" if reason else olat_type
+                skipped_elements.append({
+                    'title': _format_location(node_title, parent_st_idents),
+                    'type': type_key, 'ident': node.get('ident'), 'symbol': WARNING_SYMBOL,
+                    'link': None,
+                })
                 continue
 
             # Fallback-Ziel bewusst 'page' statt 'label': label-Aktivitäten

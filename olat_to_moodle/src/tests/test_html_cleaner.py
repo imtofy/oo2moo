@@ -83,6 +83,36 @@ def test_vague_link_text_gets_highlighted_style():
     assert 'color: #cc0000' in html
 
 
+def test_iframe_referencing_olat_repository_entry_is_replaced_with_warning():
+    html, _, removed = sanitize_for_moodle(
+        '<iframe src="https://beispiel-olat.invalid/auth/RepositoryEntry/123/'
+        'CourseNode/456?attr=1"></iframe>')
+    assert '<iframe' not in html
+    assert 'nicht automatisch übernommen werden' in html
+    assert len(removed) == 1
+    assert 'RepositoryEntry' in removed[0]['href']
+
+
+def test_iframe_to_external_video_platform_stays_untouched():
+    # YouTube/Vimeo/... - jede beliebige externe Videoseite lässt sich per
+    # iframe einbetten, nur OLATs eigenes RepositoryEntry/CourseNode-Schema
+    # darf als "verweist auf die alte Quelle" erkannt werden.
+    src = 'https://beispiel-videoplattform.invalid/embed/12345'
+    html, _, removed = sanitize_for_moodle(f'<iframe src="{src}"></iframe>')
+    assert src in html
+    assert removed == []
+
+
+def test_own_generated_pdf_embed_iframe_stays_untouched():
+    # @@PLUGINFILE@@-Verweise haben keinen Host (kein echtes href) - der
+    # eigene PDF-Inline-iframe (node_processor._auto_embed) darf davon nicht
+    # betroffen sein.
+    html, _, removed = sanitize_for_moodle(
+        '<iframe src="@@PLUGINFILE@@/Handout.pdf" style="width:100%;"></iframe>')
+    assert '@@PLUGINFILE@@/Handout.pdf' in html
+    assert removed == []
+
+
 def test_html5_semantic_tags_renamed_to_div():
     html, _, _ = sanitize_for_moodle('<section>Inhalt</section>')
     assert '<section' not in html
