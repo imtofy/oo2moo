@@ -1,21 +1,21 @@
 """Fragetyp Zuordnung.
 
 Nur 2-spaltige matchInteraction (mehr Spalten werden übersprungen).
-Moodles interner Fragetyp heißt 'match', nicht 'matching' - unser Dict
+Moodles interner Fragetyp heißt 'match', nicht 'matching' – unser Dict
 führt intern weiter qtype='matching', nur build_question_xml bekommt
 qtype_name='match'.
 """
 
-import html as html_lib
 import xml.etree.ElementTree as ET
 from typing import Dict, Optional
 
-from .helpers import element_inner_html, process_html_and_images, strip_tags, build_question_xml, IdGenerator
+from .helpers import (build_match_question_xml, correct_response_pairs, extract_question_text,
+                      element_inner_html, process_html_and_images, strip_tags, IdGenerator)
 
 
 def parse_matching(root: ET.Element, vfs: Dict[str, bytes]) -> Optional[Dict]:
     """Ziel-Optionen ohne Paar (Distraktoren) werden als Antwortoption ohne
-    Frage mit aufgenommen - sonst sähen Studierende in Moodle nur die
+    Frage mit aufgenommen – sonst sähen Studierende in Moodle nur die
     richtigen Antworten und die Frage wäre leichter als im Original."""
     interaction = root.find('.//matchInteraction')
     if interaction is None:
@@ -35,23 +35,9 @@ def parse_matching(root: ET.Element, vfs: Dict[str, bytes]) -> Optional[Dict]:
         clean_html, _ = process_html_and_images(raw_html, vfs)
         target_lookup[tid] = strip_tags(clean_html)
 
-    pairs = {}
-    response_decl = root.find('.//responseDeclaration')
-    if response_decl is not None:
-        for value in response_decl.findall('.//correctResponse/value'):
-            if value.text and ' ' in value.text.strip():
-                src_id, tgt_id = value.text.strip().split(' ', 1)
-                pairs[src_id] = tgt_id
+    pairs = correct_response_pairs(root)
 
-    text_parts = []
-    item_body = root.find('.//itemBody')
-    if item_body is not None:
-        for elem in item_body:
-            if elem.tag != 'matchInteraction':
-                text_parts.append(element_inner_html(elem))
-
-    question_html = '\n'.join(filter(None, text_parts))
-    question_text, text_files = process_html_and_images(question_html, vfs)
+    question_text, text_files = extract_question_text(root, vfs, 'matchInteraction')
 
     subquestions = []
     for sc in source_choices:
@@ -96,35 +82,6 @@ def parse_matching(root: ET.Element, vfs: Dict[str, bytes]) -> Optional[Dict]:
     }
 
 
-def generate_matching_xml(q: Dict, id_gen: IdGenerator) -> str:
+def generate_matching_xml(question: Dict, id_gen: IdGenerator) -> str:
     """Erzeugt den <question>-Block (Backup-Format) für eine Zuordnungs-Frage."""
-    mo_id = id_gen.next()
-
-    match_blocks = []
-    for sub in q['subquestions']:
-        match_id = id_gen.next()
-        safe_text = html_lib.escape(sub['text'])
-        safe_answer = html_lib.escape(sub['answer'])
-        match_blocks.append(f"""                    <match id="{match_id}">
-                      <questiontext>{safe_text}</questiontext>
-                      <questiontextformat>1</questiontextformat>
-                      <answertext>{safe_answer}</answertext>
-                    </match>""")
-    matches_block = '\n'.join(match_blocks)
-
-    plugin_inner = f"""                  <matchoptions id="{mo_id}">
-                    <shuffleanswers>1</shuffleanswers>
-                    <correctfeedback>&lt;p&gt;Die Antwort ist richtig.&lt;/p&gt;</correctfeedback>
-                    <correctfeedbackformat>1</correctfeedbackformat>
-                    <partiallycorrectfeedback>&lt;p&gt;Die Antwort ist teilweise richtig.&lt;/p&gt;\
-</partiallycorrectfeedback>
-                    <partiallycorrectfeedbackformat>1</partiallycorrectfeedbackformat>
-                    <incorrectfeedback>&lt;p&gt;Die Antwort ist falsch.&lt;/p&gt;</incorrectfeedback>
-                    <incorrectfeedbackformat>1</incorrectfeedbackformat>
-                    <shownumcorrect>1</shownumcorrect>
-                  </matchoptions>
-                  <matches>
-{matches_block}
-                  </matches>"""
-
-    return build_question_xml(q, id_gen, 'match', plugin_inner, penalty="0.3333333")
+    return build_match_question_xml(question, id_gen)

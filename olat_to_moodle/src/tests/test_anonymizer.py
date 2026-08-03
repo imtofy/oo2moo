@@ -1,4 +1,4 @@
-"""Tests für anonymizer.py - sicherheitsrelevant: hier darf NICHTS echtes
+"""Tests für anonymizer.py – sicherheitsrelevant: hier darf NICHTS echtes
 durchrutschen. sanitize_vfs() läuft vor jedem anderen Modul über den Export."""
 
 from conversion.anonymizer import sanitize_vfs
@@ -46,7 +46,7 @@ def test_non_text_files_are_never_touched():
     original = b'\x89PNG\r\n\x1a\n binary content with BAA0000 inside'
     vfs = {"bild.png": original}
     replaced = sanitize_vfs(vfs)
-    assert vfs["bild.png"] == original  # unangetastet, auch wenn's zufaellig passen wuerde
+    assert vfs["bild.png"] == original  # unangetastet, auch wenn's zufällig passen würde
     assert replaced == 0
 
 
@@ -59,7 +59,7 @@ def test_plain_text_without_matches_stays_unchanged():
 
 def test_pattern_does_not_partially_match_longer_digit_sequence():
     # \b am Ende von \d{4} darf NICHT mitten in einer längeren Ziffernfolge
-    # matchen - sonst würde z.B. eine Bestellnummer faelschlich anonymisiert.
+    # matchen – sonst würde z.B. eine Bestellnummer fälschlich anonymisiert.
     vfs = {"datei.xml": "Bestellnummer BAA00001234 bleibt unberuehrt.".encode('utf-8')}
     replaced = sanitize_vfs(vfs)
     assert replaced == 0
@@ -67,8 +67,8 @@ def test_pattern_does_not_partially_match_longer_digit_sequence():
 
 
 def test_nested_path_with_pipe_separator_still_checked_by_extension():
-    # CourseManifest markiert entpackte repo.zip/oonode.zip-Pfade mit '|' -
-    # die Endungspruefung muss den Teil NACH dem letzten '|' nehmen.
+    # CourseManifest markiert entpackte repo.zip/oonode.zip-Pfade mit '|' –
+    # die Endungsprüfung muss den Teil NACH dem letzten '|' nehmen.
     vfs = {"export/1/repo.zip|seite.html": "Autor BAA0000".encode('utf-8')}
     replaced = sanitize_vfs(vfs)
     assert replaced == 1
@@ -77,8 +77,8 @@ def test_nested_path_with_pipe_separator_still_checked_by_extension():
 # --- Absichtlich kaputte/randständige Eingaben ---
 
 def test_non_utf8_binary_data_in_text_extension_does_not_raise():
-    # Datei heisst .xml, ist aber kein gueltiges UTF-8 (z.B. korrupter Export) -
-    # darf nicht crashen, wird einfach uebersprungen.
+    # Datei heißt .xml, ist aber kein gültiges UTF-8 (z.B. korrupter Export) –
+    # darf nicht crashen, wird übersprungen.
     vfs = {"kaputt.xml": b'\xff\xfe\x00\x01 kein g\xfcltiges UTF-8'}
     replaced = sanitize_vfs(vfs)
     assert replaced == 0
@@ -90,8 +90,8 @@ def test_empty_vfs_returns_zero():
 
 def test_uppercase_extension_is_still_recognized():
     vfs = {"DATEI.XML": "BAA0000".encode('utf-8')}
-    # .lower() auf die Endung wird im Code bereits angewendet - hier nur
-    # sicherstellen, dass das auch wirklich Groß-/Kleinschreibung unabhaengig
-    # funktioniert, nicht nur zufaellig bei Kleinbuchstaben.
+    # .lower() auf die Endung wird im Code bereits angewendet – hier nur
+    # sicherstellen, dass das auch wirklich unabhängig von Groß-/Kleinschreibung
+    # funktioniert, nicht nur zufällig bei Kleinbuchstaben.
     replaced = sanitize_vfs(vfs)
     assert replaced == 1

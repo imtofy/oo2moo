@@ -1,4 +1,4 @@
-"""Tests für file_manager.py - Content-addressed Speicherung + files.xml-Bau."""
+"""Tests für file_manager.py – Content-addressed Speicherung + files.xml-Bau."""
 
 import os
 import hashlib
@@ -64,7 +64,7 @@ def test_generate_files_xml_lists_directory_and_file_entries(tmp_path):
     root = ET.fromstring(xml)
     files = root.findall('file')
     assert len(files) == 2
-    filenames = {f.findtext('filename') for f in files}
+    filenames = {handle.findtext('filename') for handle in files}
     assert filenames == {'.', 'dokument.pdf'}
 
 
@@ -105,3 +105,60 @@ def test_add_moodle_file_with_empty_content_does_not_raise(tmp_path):
     fm = FileManager(str(tmp_path))
     file_id = fm.add_moodle_file(b"", "leer.txt", 1, "mod_resource", "content", 0, 1700000000)
     assert file_id == 1
+
+
+def test_file_area_names_counts_up_for_every_further_conflict():
+    from conversion.file_manager import FileAreaNames
+
+    names = FileAreaNames()
+    assert names.assign("b.png", b"EINS") == "b.png"
+    assert names.assign("b.png", b"ZWEI") == "b_1.png"
+    assert names.assign("b.png", b"DREI") == "b_2.png"
+    assert names.assign("b.png", b"VIER") == "b_3.png"
+    # Gleicher Inhalt wie die erste Datei -> derselbe Name, kein neuer Eintrag.
+    assert names.assign("b.png", b"EINS") == "b.png"
+
+
+def test_file_area_names_handles_files_without_extension():
+    from conversion.file_manager import FileAreaNames
+
+    names = FileAreaNames()
+    assert names.assign("liesmich", b"A") == "liesmich"
+    assert names.assign("liesmich", b"B") == "liesmich_1"
+
+
+def test_file_area_names_keeps_areas_apart():
+    # Pro Dateibereich eine eigene Instanz – derselbe Name in zwei Bereichen
+    # ist kein Konflikt (z.B. dasselbe Bild in zwei Buchkapiteln).
+    from conversion.file_manager import FileAreaNames
+
+    chapter_1, chapter_2 = FileAreaNames(), FileAreaNames()
+    assert chapter_1.assign("bild.png", b"A") == "bild.png"
+    assert chapter_2.assign("bild.png", b"B") == "bild.png"
+
+
+def test_file_area_names_renames_every_further_reference_in_html():
+    from conversion.file_manager import FileAreaNames
+
+    names = FileAreaNames()
+    html = ('<img src="@@PLUGINFILE@@/b.png">'
+            '<img src="@@PLUGINFILE@@/b.png">'
+            '<img src="@@PLUGINFILE@@/b.png">')
+    for daten in (b"EINS", b"ZWEI", b"DREI"):
+        _name, html = names.assign_in_html("b.png", daten, html)
+    assert html == ('<img src="@@PLUGINFILE@@/b.png">'
+                    '<img src="@@PLUGINFILE@@/b_1.png">'
+                    '<img src="@@PLUGINFILE@@/b_2.png">')
+
+
+def test_unique_filename_keeps_compound_extensions_together():
+    from conversion.file_manager import unique_filename
+
+    taken = {"archiv.tar.gz", "sicherung.TAR.GZ", "bericht.pdf", "liesmich"}
+    assert unique_filename("archiv.tar.gz", taken) == "archiv_1.tar.gz"
+    # Groß-/Kleinschreibung der Endung darf keine Rolle spielen.
+    assert unique_filename("sicherung.TAR.GZ", taken) == "sicherung_1.TAR.GZ"
+    assert unique_filename("bericht.pdf", taken) == "bericht_1.pdf"
+    assert unique_filename("liesmich", taken) == "liesmich_1"
+    # Ein Name mit Punkten, aber ohne bekannte Doppelendung, trennt am letzten.
+    assert unique_filename("a.b.c.png", {"a.b.c.png"}) == "a.b.c_1.png"

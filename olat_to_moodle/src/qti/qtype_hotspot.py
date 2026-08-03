@@ -10,11 +10,11 @@ Koordinaten-Mapping (QTI kommagetrennt → Moodle ddmarker semikolon-Punkte):
     rect:   "x1,y1,x2,y2"    → "x1,y1;x2,y2"   (Shape: "rectangle")
     poly:   "x1,y1,x2,y2,.." → "x1,y1;x2,y2;.." (Shape: "polygon")
 
-QTI liefert keine Textbezeichnung pro Bereich, nur Koordinaten - drags
+QTI liefert keine Textbezeichnung pro Bereich, nur Koordinaten – drags
 bekommen daher generische Labels ("Bereich N"), ggf. beim Merge von Hand
 nachbessern. Das Hintergrundbild wird automatisch via
 qti_pipeline._embed_question_images in die files.xml eingebettet
-(component=qtype_ddmarker, filearea=bgimage) - fehlt es im Archiv, bleibt
+(component=qtype_ddmarker, filearea=bgimage) – fehlt es im Archiv, bleibt
 die Frage bildlos (mit Warnung).
 """
 
@@ -22,7 +22,10 @@ import os
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional
 
-from .helpers import element_inner_html, process_html_and_images, build_question_xml
+from config import (HOTSPOT_MIN_RADIUS, HOTSPOT_REGIONS_LOST_MARKER,
+                    HOTSPOT_REGIONS_LOST_WARNING, QUESTION_FEEDBACK_CORRECT,
+                    QUESTION_FEEDBACK_PARTIAL, QUESTION_FEEDBACK_INCORRECT)
+from .helpers import correct_response_values, element_inner_html, process_html_and_images, build_question_xml
 
 _SHAPE_MAP = {'circle': 'circle', 'rect': 'rectangle', 'poly': 'polygon'}
 
@@ -42,12 +45,7 @@ def parse_hotspot(root: ET.Element, vfs: Dict[str, bytes]) -> Optional[Dict]:
     if not hotspot_choices:
         return None
 
-    correct_ids = set()
-    response_decl = root.find('.//responseDeclaration')
-    if response_decl is not None:
-        for value in response_decl.findall('.//correctResponse/value'):
-            if value.text:
-                correct_ids.add(value.text.strip())
+    correct_ids = set(correct_response_values(root))
 
     image_filename = ''
     image_data = None
@@ -93,30 +91,67 @@ def parse_hotspot(root: ET.Element, vfs: Dict[str, bytes]) -> Optional[Dict]:
     }
 
 
+def _usable_radius(qti_radius: str) -> str:
+    """Hebt einen zu kleinen Kreisradius auf HOTSPOT_MIN_RADIUS an.
+
+    In OLAT wird ein Bereich angeklickt, dafür genügen wenige Pixel. In
+    Moodle wird die Markierung frei auf dem Bild abgelegt – derselbe Radius
+    ist dann kaum zu treffen und eine richtig gemeinte Antwort zählt als
+    falsch. Größere Bereiche bleiben unverändert: ein fester Faktor würde
+    einen ohnehin großzügigen Bereich über das Bild hinaus aufblähen.
+
+    Nicht-numerische Angaben bleiben unangetastet – lieber der
+    Originalwert als eine erfundene Zahl."""
+    try:
+        radius = int(float(qti_radius))
+    except (TypeError, ValueError):
+        return qti_radius
+    return str(max(radius, HOTSPOT_MIN_RADIUS))
+
+
 def _convert_coords(shape: str, qti_coords: str) -> str:
     """Wandelt QTI-Hotspot-Koordinaten (kommagetrennt) in Moodle-ddmarker-
-    Koordinaten (semikolongetrennte Punkte) um - siehe Modul-Docstring."""
-    parts = [p.strip() for p in qti_coords.split(',')]
+    Koordinaten (semikolongetrennte Punkte) um – siehe Modul-Docstring."""
+    parts = [part.strip() for part in qti_coords.split(',')]
     if shape == 'circle':
-        x, y, r = parts[0], parts[1], parts[2]
-        return f"{x},{y};{r}"
+        center_x, center_y, radius = parts[0], parts[1], parts[2]
+        return f"{center_x},{center_y};{_usable_radius(radius)}"
     points = [f"{parts[i]},{parts[i + 1]}" for i in range(0, len(parts) - 1, 2)]
     return ';'.join(points)
 
 
-def generate_hotspot_xml(q: Dict, id_gen) -> str:
+def generate_hotspot_xml(question: Dict, id_gen) -> str:
     """Nur die korrekt markierten Bereiche werden zu Drag/Drop-Paaren (siehe Moduldokstring)."""
-    correct_regions = [r for r in q['regions'] if r['is_correct']]
-    dropped = len(q['regions']) - len(correct_regions)
+    correct_regions = [region for region in question['regions'] if region['is_correct']]
+    dropped = len(question['regions']) - len(correct_regions)
+    # Für alle Meldungen der Originaltitel: die Markierung unten ist für den
+    # Kurs gedacht, im Protokoll soll der Baustein unter dem Namen auftauchen,
+    # den er in OLAT trägt.
+    title = question['title']
     if dropped:
-        print(f"[*] '{q['title']}': {dropped} nicht-korrekte(r) Hotspot-Bereich(e) "
+        print(f"[*] '{title}': {dropped} nicht-korrekte(r) Hotspot-Bereich(e) "
               f"verworfen (Drag & Drop Markierungen kennen keine Distraktor-Zonen).")
+        # Verlust auch nach dem Import sichtbar halten – im Kurs selbst, nicht
+        # nur im Protokoll dieses Laufs (siehe config.HOTSPOT_REGIONS_LOST_*).
+        # Am ursprünglichen Dict, nicht an der Kopie darunter: der Aufrufer
+        # (qti_quiz_builder) liest ihn dort aus und setzt ihn in die
+        # Test-Beschreibung.
+        question['activity_notice'] = HOTSPOT_REGIONS_LOST_WARNING.format(
+            dropped=dropped, min_radius=HOTSPOT_MIN_RADIUS)
+        question = dict(question)
+        question['title'] = (f"{HOTSPOT_REGIONS_LOST_MARKER} {question['title']} "
+                             f"{HOTSPOT_REGIONS_LOST_MARKER}")
+        # Der Hinweis gehört NICHT in den Fragetext: Moodle zeigt in der
+        # Fragenliste Name und Textanfang nebeneinander, dort stünde die
+        # Warnung dann mitten in der Übersicht. Er wandert stattdessen in die
+        # Beschreibung des Tests, die qti_quiz_builder aus 'activity_notice'
+        # zusammensetzt. Der Fragename behält die Markierung.
 
-    if q.get('image_data') is None:
-        print(f"[!] '{q['title']}': Hintergrundbild '{q.get('image_filename')}' "
+    if question.get('image_data') is None:
+        print(f"[!] '{title}': Hintergrundbild '{question.get('image_filename')}' "
               f"nicht im Archiv gefunden – die Frage ist ohne Bild in Moodle unbrauchbar.")
     else:
-        print(f"[*] '{q['title']}': Hintergrundbild '{q['image_filename']}' wird "
+        print(f"[*] '{title}': Hintergrundbild '{question['image_filename']}' wird "
               f"automatisch mit eingebettet.")
 
     drag_blocks = []
@@ -143,12 +178,12 @@ def generate_hotspot_xml(q: Dict, id_gen) -> str:
     dd_id = id_gen.next()
     plugin_inner = f"""                  <ddmarker id="{dd_id}">
                     <shuffleanswers>1</shuffleanswers>
-                    <correctfeedback>&lt;p&gt;Die Antwort ist richtig.&lt;/p&gt;</correctfeedback>
+                    <correctfeedback>&lt;p&gt;{QUESTION_FEEDBACK_CORRECT.format(subject='Die Antwort')}&lt;/p&gt;</correctfeedback>
                     <correctfeedbackformat>1</correctfeedbackformat>
-                    <partiallycorrectfeedback>&lt;p&gt;Die Antwort ist teilweise richtig.&lt;/p&gt;\
+                    <partiallycorrectfeedback>&lt;p&gt;{QUESTION_FEEDBACK_PARTIAL.format(subject='Die Antwort')}&lt;/p&gt;\
 </partiallycorrectfeedback>
                     <partiallycorrectfeedbackformat>1</partiallycorrectfeedbackformat>
-                    <incorrectfeedback>&lt;p&gt;Die Antwort ist falsch.&lt;/p&gt;</incorrectfeedback>
+                    <incorrectfeedback>&lt;p&gt;{QUESTION_FEEDBACK_INCORRECT.format(subject='Die Antwort')}&lt;/p&gt;</incorrectfeedback>
                     <incorrectfeedbackformat>1</incorrectfeedbackformat>
                     <shownumcorrect>1</shownumcorrect>
                     <showmisplaced>0</showmisplaced>
@@ -160,4 +195,4 @@ def generate_hotspot_xml(q: Dict, id_gen) -> str:
 {chr(10).join(drop_blocks)}
                   </drops>"""
 
-    return build_question_xml(q, id_gen, 'ddmarker', plugin_inner, penalty="0.3333333")
+    return build_question_xml(question, id_gen, 'ddmarker', plugin_inner, penalty="0.3333333")

@@ -2,7 +2,7 @@
 jeder inhaltlichen Lizenzänderung) ein Pflicht-Dialogfenster mit dem
 vollständigen Lizenztext, das vor dem eigentlichen Programmstart bestätigt
 werden muss. Ein bloßer Hinweis auf einer Downloadseite reicht für einen
-wirksamen Vertragsschluss nicht aus - dieses Modul ist der Mechanismus, der
+wirksamen Vertragsschluss nicht aus – dieses Modul ist der Mechanismus, der
 die in der Präambel der Lizenz genannte "Bestätigung beim erstmaligen
 Start" tatsächlich erzwingt.
 """
@@ -19,6 +19,7 @@ from tkinter import messagebox, ttk
 import sv_ttk
 
 import config
+from config import THEME_LABEL_LIGHT, THEME_LABEL_DARK, JUMP_TO_END_LABEL
 
 _REGISTRY_KEY = r"Software\Olat_to_Moodle"
 _REGISTRY_VALUE = "LicenseAcceptedHash"
@@ -26,25 +27,26 @@ _REGISTRY_VALUE = "LicenseAcceptedHash"
 _MUTED_COLORS = {"dark": "#9a9a9a", "light": "#5f5f5f"}
 _LINK_COLORS = {"dark": "#4da6ff", "light": "#0b5fc7"}
 
-# Erkennt entweder `code` oder [Text](Ziel) - eine gemeinsame Regel statt
+# Erkennt entweder `code` oder [Text](Ziel) – eine gemeinsame Regel statt
 # zwei getrennter Durchläufe, damit beide Token-Arten in der richtigen
 # Reihenfolge im Fließtext verarbeitet werden, egal wie sie gemischt vorkommen.
 _INLINE_TOKEN = re.compile(r'`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)')
 
 
 def _fallback_marker_path() -> str:
-    """Pfad zur Fallback-Marker-Datei - nur genutzt, wenn die Registry
+    """Pfad zur Fallback-Marker-Datei – nur genutzt, wenn die Registry
     weder lesbar noch beschreibbar ist (z.B. in einer eingeschränkten
-    Firmenumgebung). Liegt in %APPDATA%, nicht neben der .exe - ein
-    Ersetzen/Neuherunterladen der .exe verliert die Zustimmung so nicht."""
+    Firmenumgebung). Liegt in %APPDATA%, nicht neben der .exe – ein
+    Ersetzen/Neuherunterladen der .exe verliert die Zustimmung so nicht.
+
+    Legt das Verzeichnis NICHT an – das passiert erst beim Schreiben
+    (_write_accepted_hash), damit reines Lesen keinen Seiteneffekt hat."""
     appdata = os.getenv("APPDATA") or os.path.expanduser("~")
-    folder = os.path.join(appdata, "Olat_to_Moodle")
-    os.makedirs(folder, exist_ok=True)
-    return os.path.join(folder, "license_accepted.json")
+    return os.path.join(appdata, "Olat_to_Moodle", "license_accepted.json")
 
 
 def _read_accepted_hash() -> str | None:
-    """Liest den vermerkten Zustimmungs-Hash - zuerst aus der Registry
+    """Liest den vermerkten Zustimmungs-Hash – zuerst aus der Registry
     (HKEY_CURRENT_USER\\Software\\Olat_to_Moodle), bei Fehlschlag aus der
     Fallback-Datei."""
     try:
@@ -57,8 +59,8 @@ def _read_accepted_hash() -> str | None:
     if not os.path.exists(marker_path):
         return None
     try:
-        with open(marker_path, encoding="utf-8") as f:
-            return json.load(f).get("accepted_hash")
+        with open(marker_path, encoding="utf-8") as handle:
+            return json.load(handle).get("accepted_hash")
     except (OSError, json.JSONDecodeError):
         return None
 
@@ -73,21 +75,36 @@ def _write_accepted_hash(value: str) -> None:
         return
     except OSError:
         pass
-    with open(_fallback_marker_path(), "w", encoding="utf-8") as f:
-        json.dump({"accepted_hash": value}, f)
+    marker_path = _fallback_marker_path()
+    os.makedirs(os.path.dirname(marker_path), exist_ok=True)
+    with open(marker_path, "w", encoding="utf-8") as handle:
+        json.dump({"accepted_hash": value}, handle)
 
 
 def _license_hash(license_text: str) -> str:
-    """Fingerabdruck des Lizenztexts - jede inhaltliche Änderung ändert den
+    """Fingerabdruck des Lizenztexts – jede inhaltliche Änderung ändert den
     Hash und macht eine alte Zustimmung automatisch ungültig."""
     return hashlib.sha256(license_text.encode("utf-8")).hexdigest()
 
 
 def read_license_text() -> str:
-    """Liest LICENSE.md - dieselbe Datei, die auch auf GitHub angezeigt
-    wird, kein separat gepflegter Text."""
-    with open(config.LICENSE_PATH, encoding="utf-8") as f:
-        return f.read()
+    """Liest LICENSE.md – dieselbe Datei, die auch auf GitHub angezeigt
+    wird, kein separat gepflegter Text.
+
+    Fehlt sie, ist der Build kaputt: ohne Lizenztext kann niemand zustimmen,
+    und ohne Zustimmung darf das Programm nicht laufen. Statt der rohen
+    Ausnahme (die in der fensterbasierten .exe als Traceback-Fenster
+    erschiene) gibt es deshalb eine verständliche Meldung."""
+    try:
+        with open(config.LICENSE_PATH, encoding="utf-8") as handle:
+            return handle.read()
+    except OSError as exc:
+        messagebox.showerror(
+            "Lizenztext fehlt",
+            f"Die Datei LICENSE.md konnte nicht gelesen werden:\n{exc}\n\n"
+            f"Ohne sie kann den Lizenzbedingungen nicht zugestimmt werden. "
+            f"Bitte das Programm neu herunterladen.")
+        sys.exit(1)
 
 
 def has_accepted_current_license() -> bool:
@@ -103,7 +120,7 @@ def record_acceptance() -> None:
 def render_into(text_widget: tk.Text, license_text: str) -> None:
     """Baut den Lizenztext mit einfacher Formatierung in ein bestehendes
     Text-Widget (Überschriften fett/größer statt der rohen '#'/'##'-
-    Markdown-Zeichen, `code`-Abschnitte in Monospace) - reine Anzeige, kein
+    Markdown-Zeichen, `code`-Abschnitte in Monospace) – reine Anzeige, kein
     waschechter Markdown-Parser. Genutzt sowohl vom Zustimmungs-Gate als
     auch vom "Lizenz"-Knopf im Hauptfenster (siehe open_viewer)."""
     text_widget.tag_configure("h1", font=("Segoe UI", 14, "bold"), spacing3=10)
@@ -129,7 +146,7 @@ def render_into(text_widget: tk.Text, license_text: str) -> None:
 def _insert_body_line(text_widget: tk.Text, line: str) -> None:
     """Fügt eine normale Textzeile ein, `code`-Abschnitte darin bekommen
     die Monospace-Schrift, [Text](Ziel)-Links werden klickbar (öffnet Ziel
-    im Standardbrowser) - der Renderer ist bewusst kein voller
+    im Standardbrowser) – der Renderer ist bewusst kein voller
     Markdown-Parser, siehe render_into()."""
     pos = 0
     for match in _INLINE_TOKEN.finditer(line):
@@ -144,7 +161,7 @@ def _insert_body_line(text_widget: tk.Text, line: str) -> None:
 
 
 def _insert_link(text_widget: tk.Text, text: str, target: str) -> None:
-    """Fügt anklickbaren Linktext ein - der Tag-Name leitet sich vom Ziel
+    """Fügt anklickbaren Linktext ein – der Tag-Name leitet sich vom Ziel
     ab, mehrere Vorkommen desselben Ziels teilen sich also denselben Tag
     (erneutes tag_bind() darauf überschreibt nur mit demselben Handler,
     unschädlich)."""
@@ -166,7 +183,7 @@ def apply_theme_colors(text_widget: tk.Text) -> None:
 
 
 def open_viewer(parent: tk.Tk) -> None:
-    """Öffnet die Lizenz nochmal zum Nachlesen - nicht-modal, nur eine
+    """Öffnet die Lizenz nochmal zum Nachlesen – nicht-modal, nur eine
     Schließen-Schaltfläche, kein Zustimmen/Ablehnen. Anders als
     _LicenseGateFrame ist hier ein normales Toplevel mit grab_set()
     unproblematisch: das Hauptfenster (parent) ist an dieser Stelle längst
@@ -197,18 +214,18 @@ def open_viewer(parent: tk.Tk) -> None:
 
 class _LicenseGateFrame(ttk.Frame):
     """Füllt das Hauptfenster VOR dem eigentlichen Konverter komplett mit
-    Lizenztext + Zustimmen/Ablehnen - bewusst kein separates Toplevel-
+    Lizenztext + Zustimmen/Ablehnen – bewusst kein separates Toplevel-
     Dialogfenster mit grab_set(): diese Kombination bleibt auf Windows
     unsichtbar, wenn das Elternfenster noch nie gezeigt wurde. Ein
     einzelnes Fenster, das nacheinander zwei verschiedene Inhalte zeigt,
     vermeidet das von vornherein.
 
-    "Zustimmen" bleibt gesperrt, bis bis zum Ende gescrollt wurde - reine
+    "Zustimmen" bleibt gesperrt, bis bis zum Ende gescrollt wurde – reine
     Textanzeige ohne erzwungenes Lesen wäre keine echte "zumutbare
     Kenntnisnahme" (siehe Modul-Docstring).
 
     Braucht: master (tk.Tk-Wurzelfenster), license_text (str). Ergebnis
-    steht nach master.mainloop() in self.result (True = zugestimmt) -
+    steht nach master.mainloop() in self.result (True = zugestimmt) –
     _on_accept/_on_reject beenden den mainloop() über master.quit(), ohne
     master selbst zu zerstören.
     """
@@ -226,14 +243,14 @@ class _LicenseGateFrame(ttk.Frame):
             header, text="Bitte die Lizenzbedingungen lesen und bestätigen:",
             font=("Segoe UI", 11, "bold")
         ).pack(side="left")
-        self._theme_button = ttk.Button(header, text="🌙 Dunkles Design", command=self._toggle_theme, width=16)
+        self._theme_button = ttk.Button(header, text=THEME_LABEL_DARK, command=self._toggle_theme, width=16)
         self._theme_button.pack(side="right")
 
         text_frame = ttk.Frame(self)
         text_frame.pack(fill="both", expand=True, padx=16)
         self._text_widget = tk.Text(
             text_frame, wrap="word", relief="flat", borderwidth=0, padx=10, pady=8, font=("Segoe UI", 10))
-        # Scrollbar VOR dem expandierenden Textfeld packen - andersrum
+        # Scrollbar VOR dem expandierenden Textfeld packen – andersrum
         # bekommt sie keinen Platz mehr zugeteilt und verschwindet
         # praktisch unsichtbar.
         scroll = ttk.Scrollbar(text_frame, orient="vertical", command=self._on_scrollbar)
@@ -245,7 +262,7 @@ class _LicenseGateFrame(ttk.Frame):
         render_into(self._text_widget, license_text)
         self._text_widget.config(state="disabled")
 
-        self._jump_button = ttk.Button(text_frame, text="⬇ Zum Ende springen", command=self._jump_to_end)
+        self._jump_button = ttk.Button(text_frame, text=JUMP_TO_END_LABEL, command=self._jump_to_end)
         self._jump_button.place(in_=self._text_widget, relx=1.0, rely=1.0, x=-14, y=-14, anchor="se")
 
         button_frame = ttk.Frame(self)
@@ -259,21 +276,21 @@ class _LicenseGateFrame(ttk.Frame):
 
         self._apply_theme_colors()
         # Passt Zustimmen/Sprung-Button/Hinweistext gleich einmal an den
-        # Ist-Zustand an - falls der Text von Anfang an komplett ins
+        # Ist-Zustand an – falls der Text von Anfang an komplett ins
         # Fenster passt, ohne dass je gescrollt werden musste.
         # noinspection PyTypeChecker
         # JetBrains-Bug, nicht fixbar
         self.after_idle(self._update_scroll_gate)
 
     def _on_text_scroll(self, first, last):
-        """yscrollcommand-Callback - hält die Scrollbar synchron und prüft
+        """yscrollcommand-Callback – hält die Scrollbar synchron und prüft
         bei JEDER Scroll-Ursache (Mausrad, Tastatur, Scrollbar-Ziehen,
         programmatisch) automatisch, ob das Textende erreicht wurde."""
         self._scrollbar.set(first, last)
         self._update_scroll_gate(float(last))
 
     def _on_scrollbar(self, *args):
-        """command-Callback der Scrollbar - reicht die Bewegung ans
+        """command-Callback der Scrollbar – reicht die Bewegung ans
         Textfeld weiter, dessen yscrollcommand dann _on_text_scroll auslöst."""
         self._text_widget.yview(*args)
 
@@ -305,7 +322,7 @@ class _LicenseGateFrame(ttk.Frame):
         passt den Theme-Knopf-Text an."""
         apply_theme_colors(self._text_widget)
         is_dark = sv_ttk.get_theme() == "dark"
-        self._theme_button.config(text="☀ Helles Design" if is_dark else "🌙 Dunkles Design")
+        self._theme_button.config(text=THEME_LABEL_LIGHT if is_dark else THEME_LABEL_DARK)
 
     def _on_accept(self):
         """Merkt die Zustimmung und beendet den Warte-mainloop() aus enforce()."""
@@ -313,7 +330,7 @@ class _LicenseGateFrame(ttk.Frame):
         self.master.quit()
 
     def _on_reject(self):
-        """Beendet den Warte-mainloop() ohne Zustimmung - Programmstart
+        """Beendet den Warte-mainloop() ohne Zustimmung – Programmstart
         wird danach in enforce() abgebrochen."""
         self.result = False
         self.master.quit()
@@ -323,7 +340,7 @@ def enforce(root: tk.Tk) -> None:
     """Zeigt bei Bedarf die Zustimmungs-Oberfläche direkt in root (siehe
     _LicenseGateFrame) und beendet das Programm sofort, falls abgelehnt
     wird. Baut root für die Dauer der Anzeige selbst auf/ab (deiconify beim
-    Zeigen, danach wieder withdraw) - der Aufrufer muss root nur einmal vor
+    Zeigen, danach wieder withdraw) – der Aufrufer muss root nur einmal vor
     und einmal nach diesem Aufruf behandeln, nicht währenddessen."""
     if has_accepted_current_license():
         return
@@ -338,7 +355,7 @@ def enforce(root: tk.Tk) -> None:
 
     root.withdraw()
     gate.destroy()
-    # WM_DELETE_WINDOW wieder auf das normale Schließverhalten zurücksetzen -
+    # WM_DELETE_WINDOW wieder auf das normale Schließverhalten zurücksetzen –
     # sonst würde ein Schließen des späteren Hauptfensters noch den
     # längst nicht mehr gültigen root.quit()-Reflex aus der Gate-Phase auslösen.
     root.protocol("WM_DELETE_WINDOW", root.destroy)

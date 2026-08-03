@@ -1,0 +1,22 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.py]
+indent_style = space
+indent_size = 4
+# 120 statt der klassischen 79: Kommentare brachen bisher bei ~75 um, der
+# Code lief bis 137 - auf einem breiten Fenster ergab das eine schmale
+# Textspalte neben viel leerer Fläche. PyCharm liest diesen Wert und zeigt
+# die Hilfslinie danach.
+max_line_length = 120
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{xml,spec}]
+indent_size = 2

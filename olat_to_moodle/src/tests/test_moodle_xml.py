@@ -1,4 +1,4 @@
-"""Tests für moodle_xml.py - patcht die aus dem Template kopierten
+"""Tests für moodle_xml.py – patcht die aus dem Template kopierten
 Aktivitäts-XMLs mit echten Werten. Arbeitet auf echten Dateien (tmp_path),
 weil die Funktionen selbst Dateien lesen/schreiben."""
 
@@ -110,8 +110,8 @@ def test_rewrite_inforef_xml_with_files_and_question_categories(tmp_path):
     path = tmp_path / "inforef.xml"
     rewrite_inforef_xml(str(path), file_ids=[1, 2], question_category_ids=[10, 11])
     root = ET.parse(path).getroot()
-    file_ids = [f.findtext('id') for f in root.findall('.//fileref/file')]
-    cat_ids = [c.findtext('id') for c in root.findall('.//question_categoryref/question_category')]
+    file_ids = [handle.findtext('id') for handle in root.findall('.//fileref/file')]
+    cat_ids = [content.findtext('id') for content in root.findall('.//question_categoryref/question_category')]
     assert file_ids == ['1', '2']
     assert cat_ids == ['10', '11']
 
@@ -127,7 +127,7 @@ def test_rewrite_inforef_xml_with_nothing_produces_minimal_valid_inforef(tmp_pat
 # --- Absichtlich unpassende Eingaben (Fehlerbehandlung) ---
 
 def test_modify_activity_xml_with_mismatched_modulename_does_not_raise(tmp_path):
-    # Template hat <page>, wir behaupten aber modulename='resource' -
+    # Template hat <page>, wir behaupten aber modulename='resource' –
     # find() liefert None, die Funktion darf trotzdem nicht crashen.
     path = tmp_path / "page.xml"
     _write(path, '<activity id="0" moduleid="0" contextid="0">'

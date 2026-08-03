@@ -1,13 +1,14 @@
 """Patcht die aus dem Moodle-Template kopierten Aktivitäts-XMLs mit echten Werten.
 
-main.py kopiert für jede Aktivität ein passendes Template aus Files\\
-moodle_musterkurs und ruft danach die Funktionen hier auf, um die
-Platzhalter-IDs/Inhalte des Templates durch die tatsächlichen Werte des
+main.py kopiert für jede Aktivität ein passendes Template aus
+src/moodle_musterkurs/activities/ und ruft danach die Funktionen hier auf, um
+die Platzhalter-IDs/Inhalte des Templates durch die tatsächlichen Werte des
 OLAT-Knotens zu ersetzen.
 """
 
 import xml.etree.ElementTree as ET
 from config import OLAT_NAMES
+from config import UNRECOGNIZED_TYPE_WARNING
 
 
 def modify_module_xml(filepath: str, module_id: int, section_id: int, now: int):
@@ -30,15 +31,14 @@ def modify_module_xml(filepath: str, module_id: int, section_id: int, now: int):
 def modify_subsection_xml(filepath: str, subsection_instance_id: int, module_id: int,
                           context_id: int, title: str, now: int):
     """subsection_instance_id ist die eigene ID der subsection-Instanz, NICHT
-    die course_modules-ID - verknüpft den zugehörigen Kind-Abschnitt über
+    die course_modules-ID – verknüpft den zugehörigen Kind-Abschnitt über
     dessen <itemid>, siehe xml_generator.generate_section_xml.
 
     Das äußere <activity id="..."> muss subsection_instance_id sein (nicht
-    module_id!) - ein echter Moodle-Export (Files/moodle_musterkurs) zeigt
-    <activity id="708" moduleid="215149"><subsection id="708">, also id ==
-    der Instanz-ID der subsection, moduleid separat die course_modules-ID.
+    module_id!): id ist die Instanz-ID der subsection, moduleid separat die
+    course_modules-ID, und <subsection id="..."> wiederholt die Instanz-ID.
     Mit id==module_id findet Moodles Restore beim Auflösen von section.xml's
-    <itemid> keine passende Aktivität mehr - die Sektion verliert ihre
+    <itemid> keine passende Aktivität mehr – die Sektion verliert ihre
     Verknüpfung und landet als leerer, nicht zugeordneter "Neuer Abschnitt"
     im Kurs, bei jedem Unterabschnitt."""
     tree = ET.parse(filepath)
@@ -65,7 +65,7 @@ def modify_activity_xml(filepath: str, modulename: str, module_id: int, context_
                         html_content: str, node_url: str = "", description_html: str = ""):
     """Füllt die aktivitätsspezifische XML (z.B. page.xml) mit dem konvertierten Inhalt.
 
-    title muss roh/unescaped übergeben werden - ElementTree escaped beim
+    title muss roh/unescaped übergeben werden – ElementTree escaped beim
     Schreiben selbst, manuelles Vorab-Escaping würde & → &amp;amp; doppeln.
     Eine frische <revision> bei page/resource/folder zwingt Moodle, Dateien
     nach dem Restore sofort neu aufzulösen (sonst erscheint ein Bild teils
@@ -74,11 +74,11 @@ def modify_activity_xml(filepath: str, modulename: str, module_id: int, context_
     <content> statt <intro>, alle anderen Typen ins <intro>-Feld.
 
     description_html ist die separat aufbereitete OLAT-Beschreibung (siehe
-    node_processor.build_node_content) - nur bei modulename='page' relevant:
+    node_processor.build_node_content) – nur bei modulename='page' relevant:
     landet dort im <intro>-Feld (Info-Block, im Template bereits über
     showdescription/printintro aktiv), getrennt vom eigentlichen
-    Seiteninhalt in <content>. Bei jedem anderen Modultyp bleibt es beim
-    bisherigen Verhalten (html_content bereits inkl. Beschreibung → <intro>).
+    Seiteninhalt in <content>. Bei jedem anderen Modultyp trägt html_content
+    die Beschreibung bereits selbst und wandert samt ihr ins <intro>.
     """
     tree = ET.parse(filepath)
     root = tree.getroot()
@@ -108,11 +108,7 @@ def modify_activity_xml(filepath: str, modulename: str, module_id: int, context_
         clean_html = html_content if html_content else ""
 
         if is_fallback:
-            fallback_warning = (
-                f'<p style="color:red;"><strong>Achtung:</strong> Dieser Bausteintyp '
-                f'({olat_name}) wurde nicht automatisch erkannt – der Inhalt wurde '
-                f'trotzdem übernommen, bitte einmal prüfen.</p>'
-            )
+            fallback_warning = UNRECOGNIZED_TYPE_WARNING.format(olat_name=olat_name)
             final_content = f'{fallback_warning}{clean_html}'
         else:
             final_content = clean_html
@@ -123,7 +119,7 @@ def modify_activity_xml(filepath: str, modulename: str, module_id: int, context_
                 url_node = ET.SubElement(module_node, 'externalurl')
             # example.invalid statt einer echten Domain: 'example' + die TLD
             # '.invalid' sind beide nach RFC 2606 von der IANA für genau
-            # diesen Zweck reserviert - garantiert nie auflösbar, anders als
+            # diesen Zweck reserviert – garantiert nie auflösbar, anders als
             # z.B. platzhalter.de (eine echte, erreichbare Domain).
             url_node.text = node_url if node_url else "http://example.invalid/"
 
@@ -145,7 +141,7 @@ def modify_activity_xml(filepath: str, modulename: str, module_id: int, context_
 
 def set_forum_announcement_type(filepath: str):
     """Macht aus der kopierten forum.xml eine Moodle-"Ankündigungen"-Aktivität
-    (type='news', forcesubscribe=2) - für OLATs 'info'-Baustein (Mitteilungen),
+    (type='news', forcesubscribe=2) – für OLATs 'info'-Baustein (Mitteilungen),
     der über dasselbe Forum-Template wie ein normales Forum läuft."""
     tree = ET.parse(filepath)
     root = tree.getroot()
@@ -163,7 +159,7 @@ def set_forum_announcement_type(filepath: str):
 def rewrite_inforef_xml(filepath: str, file_ids: list, question_category_ids: list | None = None):
     """question_category_ids (nur bei Quiz-Aktivitäten: [top_id, cat_id] aus
     qti_quiz_builder.build_quiz_activity) verknüpft die questions.xml-
-    Kategorien mit dieser Aktivität - ohne das findet Moodle beim Restore
+    Kategorien mit dieser Aktivität – ohne das findet Moodle beim Restore
     die zugehörigen Fragen nicht."""
     xml = '<?xml version="1.0" encoding="UTF-8"?>\n<inforef>\n'
     if file_ids:
@@ -178,5 +174,5 @@ def rewrite_inforef_xml(filepath: str, file_ids: list, question_category_ids: li
         xml += '  </question_categoryref>\n'
     xml += '</inforef>'
 
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(xml)
+    with open(filepath, "w", encoding="utf-8", newline='\n') as handle:
+        handle.write(xml)

@@ -1,4 +1,4 @@
-"""Tests für SectionBuilder - Section-/Subsection-/Sammel-Bucket-Verwaltung
+"""Tests für SectionBuilder – Section-/Subsection-/Sammel-Bucket-Verwaltung
 für einen einzelnen Kurslauf (main.py legt pro Aufruf eine neue Instanz an)."""
 
 import os
@@ -68,7 +68,7 @@ def test_resolve_target_section_with_unknown_parent_falls_back_to_bucket(tmp_pat
 
 
 def test_open_top_section_numbers_start_at_zero(tmp_path):
-    # Slot 0 ist Moodles zwingende "Allgemeines"-Section - die erste im
+    # Slot 0 ist Moodles zwingende "Allgemeines"-Section – die erste im
     # Kurslauf erzeugte Section muss diese Nummer bekommen.
     sb = _builder(tmp_path)
     first_id = sb.open_top_section(_node(ident="1", title="Erste Struktur"))

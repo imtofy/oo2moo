@@ -4,7 +4,7 @@ Ab 2 textEntryInteraction-Lücken zuständig (1 Lücke → qtype_shortanswer.py)
 baseType float/integer wird zur NUMERICAL-Lücke, sonst SHORTANSWER.
 
 Laut echter Moodle-5.0-Referenz braucht die Elternfrage (multianswer) UND
-jede Lücke einen EIGENEN question_bank_entry in derselben Kategorie - die
+jede Lücke einen EIGENEN question_bank_entry in derselben Kategorie – die
 Elternfrage verlinkt die Lücken nur über <multianswer><sequence>. Deshalb
 liefert generate_cloze_entries() (anders als die übrigen Generatoren) eine
 Liste fertiger question_bank_entry-Blöcke statt eines einzelnen
@@ -22,7 +22,7 @@ from .helpers import (element_inner_html, process_html_and_images, escape_cloze_
 
 
 def parse_cloze(root: ET.Element, vfs: Dict[str, bytes]) -> Optional[Dict]:
-    """Toleranz bei NUMERICAL-Lücken bleibt immer 0 - OLAT liefert nur einen
+    """Toleranz bei NUMERICAL-Lücken bleibt immer 0 – OLAT liefert nur einen
     exakten Wert, keinen Toleranzbereich."""
     item_body = root.find('.//itemBody')
     if item_body is None:
@@ -37,8 +37,8 @@ def parse_cloze(root: ET.Element, vfs: Dict[str, bytes]) -> Optional[Dict]:
     for response_decl in root.findall('.//responseDeclaration'):
         rid = response_decl.get('identifier', '')
         basetype_by_id[rid] = response_decl.get('baseType', 'string')
-        values = [v.text.strip() for v in response_decl.findall('.//correctResponse/value')
-                  if v.text]
+        values = [value_elem.text.strip() for value_elem in response_decl.findall('.//correctResponse/value')
+                  if value_elem.text]
         if values:
             correct_by_id[rid] = values
 
@@ -60,7 +60,7 @@ def parse_cloze(root: ET.Element, vfs: Dict[str, bytes]) -> Optional[Dict]:
             value = escape_cloze_text(answers[0])
             return f'{{1:NUMERICAL:={value}:0}}'
         primary = escape_cloze_text(answers[0])
-        alt = ''.join(f'~={escape_cloze_text(a)}' for a in answers[1:])
+        alt = ''.join(f'~={escape_cloze_text(answer)}' for answer in answers[1:])
         return f'{{1:SHORTANSWER:={primary}{alt}}}'
 
     cloze_html = re.sub(_TAG_PATTERN, cloze_replacer, raw_body_html)
@@ -84,7 +84,7 @@ def _build_numerical_subquestion(sub_qid: int, parent_qid: int, title: str, toke
     record_id = id_gen.next()
     plugin_inner = f"""                  <answers>
                     <answer id="{answer_id}">
-                      <answertext>{html_lib.escape(value)}</answertext>
+                      <answertext>{html_lib.escape(value, quote=False)}</answertext>
                       <answerformat>0</answerformat>
                       <fraction>1.0000000</fraction>
                       <feedback></feedback>
@@ -119,7 +119,7 @@ def _build_shortanswer_subquestion(sub_qid: int, parent_qid: int, title: str, to
     for ans in answers:
         aid = id_gen.next()
         answer_blocks.append(f"""                    <answer id="{aid}">
-                      <answertext>{html_lib.escape(ans)}</answertext>
+                      <answertext>{html_lib.escape(ans, quote=False)}</answertext>
                       <answerformat>0</answerformat>
                       <fraction>1.0000000</fraction>
                       <feedback></feedback>
@@ -136,35 +136,35 @@ def _build_shortanswer_subquestion(sub_qid: int, parent_qid: int, title: str, to
                                    parent=parent_qid, penalty="0.0000000")
 
 
-def generate_cloze_entries(q: Dict, id_gen, cat_id: int) -> Tuple[List[str], int]:
-    """Gibt (alle question_bank_entry-Blöcke, entry_id der Elternfrage) zurück -
+def generate_cloze_entries(question: Dict, id_gen, cat_id: int) -> Tuple[List[str], int]:
+    """Gibt (alle question_bank_entry-Blöcke, entry_id der Elternfrage) zurück –
     nur die Elternfrage referenziert quiz.xml direkt als Slot, Subquestions
     hängen nur über <sequence> dran (siehe Moduldokstring)."""
-    warn_dropped_files(q)
+    warn_dropped_files(question)
 
-    tokens = extract_cloze_tokens(q['text'])
-    parent_text = replace_cloze_tokens_with_placeholders(q['text'])
+    tokens = extract_cloze_tokens(question['text'])
+    parent_text = replace_cloze_tokens_with_placeholders(question['text'])
 
-    if len(tokens) != len(q['blanks']):
-        print(f"[!] '{q['title']}': {len(tokens)} Cloze-Token(s) im Text, aber "
-              f"{len(q['blanks'])} Lücke(n) erkannt – nur die ersten "
-              f"{min(len(tokens), len(q['blanks']))} werden verknüpft, der Rest "
+    if len(tokens) != len(question['blanks']):
+        print(f"[!] '{question['title']}': {len(tokens)} Cloze-Token(s) im Text, aber "
+              f"{len(question['blanks'])} Lücke(n) erkannt – nur die ersten "
+              f"{min(len(tokens), len(question['blanks']))} werden verknüpft, der Rest "
               f"geht verloren (evtl. literale {{n:TYPE:...}}-Syntax im Fragetext?).")
 
     parent_qid = id_gen.next()
     sub_ids: List[int] = []
     sub_entries: List[str] = []
 
-    for token, blank in zip(tokens, q['blanks']):
+    for token, blank in zip(tokens, question['blanks']):
         sub_qid = id_gen.next()
         sub_ids.append(sub_qid)
 
         if blank['basetype'] in ('float', 'integer'):
             sub_question_xml = _build_numerical_subquestion(
-                sub_qid, parent_qid, q['title'], token, blank, id_gen)
+                sub_qid, parent_qid, question['title'], token, blank, id_gen)
         else:
             sub_question_xml = _build_shortanswer_subquestion(
-                sub_qid, parent_qid, q['title'], token, blank, id_gen)
+                sub_qid, parent_qid, question['title'], token, blank, id_gen)
 
         sub_entry_xml, _sub_entry_id = wrap_question_bank_entry(sub_question_xml, cat_id, id_gen)
         sub_entries.append(sub_entry_xml)
@@ -178,7 +178,7 @@ def generate_cloze_entries(q: Dict, id_gen, cat_id: int) -> Tuple[List[str], int
                     <sequence>{sequence}</sequence>
                   </multianswer>"""
     parent_question_xml = build_question_element(
-        parent_qid, q['title'], parent_text, 'multianswer', parent_plugin_inner,
+        parent_qid, question['title'], parent_text, 'multianswer', parent_plugin_inner,
         parent=0, penalty="0.3333333", defaultmark=f"{len(sub_ids)}.0000000")
     parent_entry_xml, parent_entry_id = wrap_question_bank_entry(parent_question_xml, cat_id, id_gen)
 

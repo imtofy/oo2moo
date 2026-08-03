@@ -5,12 +5,12 @@ Bindeglied zwischen dem Kurs-Konverter (main.py) und der QTI-Fragen-Pipeline
 
 Ein iqtest/iqself-CourseNode referenziert sein QTI-2.1-Paket zwar über den
 moduleConfiguration-Entry 'repoSoftkey', aufgelöst wird es aber über
-manifest.resolve_repo_package() - siehe dort für den 'export/<node-ident>/'-
+manifest.resolve_repo_package() – siehe dort für den 'export/<node-ident>/'-
 Mechanismus (identisch für cp-Content-Packages, siehe cp_book_builder.py).
 
 Sonderfall eigenständiges QTI-Testpaket ohne Kurs drumherum (siehe
 config.STANDALONE_QTI_IDENT): main.py speist dafür einen synthetischen
-Knoten mit diesem ident ein - es gibt dann kein repo.zip, der Export IST
+Knoten mit diesem ident ein – es gibt dann kein repo.zip, der Export IST
 bereits das QTI-Paket, build_quiz_activity() nimmt dann manifest.vfs
 unverändert als Fragen-VFS.
 """
@@ -19,7 +19,8 @@ import html as html_lib
 from typing import Dict, List, Optional, TypedDict
 
 from . import qti_pipeline
-from config import STANDALONE_QTI_IDENT
+from config import HOTSPOT_REGIONS_LOST_MARKER, STANDALONE_QTI_IDENT
+from conversion.file_manager import activity_title, escape_xml_text, mark_activity_title
 
 _QUESTIONS_PER_PAGE = 1
 _DEFAULT_MAXMARK = "1.0000000"
@@ -44,7 +45,7 @@ def _build_quiz_sections_xml(question_instances: List[Dict], id_gen) -> str:
         cur_title = qi.get('section_title') or ''
         if i == 1 or cur_title != prev_title:
             sec_id = id_gen.next()
-            safe_heading = html_lib.escape(cur_title)
+            safe_heading = html_lib.escape(cur_title, quote=False)
             blocks.append(f"""      <section id="{sec_id}">
         <firstslot>{i}</firstslot>
         <heading>{safe_heading}</heading>
@@ -55,13 +56,18 @@ def _build_quiz_sections_xml(question_instances: List[Dict], id_gen) -> str:
 
 
 def _generate_quiz_xml(quiz_id: int, module_id: int, context_id: int, title: str,
-                       now: int, question_instances: List[Dict], id_gen) -> str:
+                       now: int, question_instances: List[Dict], id_gen,
+                       intro: str = "") -> str:
     """quiz_id = module_id, Moodle braucht hier keine getrennte ID. sumgrades
     ist die Summe aller maxmark-Werte; die übrigen Felder sind feste
     Moodle-Standardwerte aus einer echten Moodle-5.0-Referenz-quiz.xml
     (deferredfeedback als Bewertungsverhalten, freie Navigation)."""
-    safe_title = html_lib.escape(title)
+    safe_title = html_lib.escape(title, quote=False)
     sumgrades = sum(float(qi['maxmark']) for qi in question_instances)
+    # Moodle rechnet das Ergebnis von sumgrades auf grade um. Beide gleich
+    # zu setzen erhält die Punktzahlen aus OLAT – bei festem grade (Moodles
+    # Neuanlage-Default 10) erschiene ein 40-Punkte-Test als 'x von 10'.
+    quiz_grade = sumgrades if sumgrades > 0 else 10.0
     sections_block = _build_quiz_sections_xml(question_instances, id_gen)
 
     instance_blocks = []
@@ -84,10 +90,15 @@ def _generate_quiz_xml(quiz_id: int, module_id: int, context_id: int, title: str
       </question_instance>""")
     instances_block = '\n'.join(instance_blocks)
 
+    # Hinweise einzelner Fragen stehen in der Beschreibung des Tests
+    # statt im Fragetext: Moodle zeigt in der Fragenliste Name und
+    # Textanfang nebeneinander, dort stünde die Warnung mittendrin.
+    safe_intro = escape_xml_text(intro)
+
     return f"""<activity id="{quiz_id}" moduleid="{module_id}" modulename="quiz" contextid="{context_id}">
   <quiz id="{quiz_id}">
     <name>{safe_title}</name>
-    <intro></intro>
+    <intro>{safe_intro}</intro>
     <introformat>1</introformat>
     <timeopen>0</timeopen>
     <timeclose>0</timeclose>
@@ -113,7 +124,7 @@ def _generate_quiz_xml(quiz_id: int, module_id: int, context_id: int, title: str
     <navmethod>free</navmethod>
     <shuffleanswers>1</shuffleanswers>
     <sumgrades>{sumgrades:.5f}</sumgrades>
-    <grade>10.00000</grade>
+    <grade>{quiz_grade:.5f}</grade>
     <timecreated>{now}</timecreated>
     <timemodified>{now}</timemodified>
     <password></password>
@@ -159,15 +170,15 @@ def build_quiz_activity(node: Dict, manifest, context_id: int, module_id: int,
 
     Bricht mit None ab, sobald das Paket nicht auflösbar ist, keine
     unterstützten Fragen gefunden werden, oder alle Fragen ohne Generator
-    sind (z.B. eine reine Matrix-Frage) - main.py fällt dann auf die
+    sind (z.B. eine reine Matrix-Frage) – main.py fällt dann auf die
     generische leere Quiz-Aktivität zurück statt den Kurslauf abzubrechen.
 
-    report_sink (optional): erhält bei JEDEM Ausgang - auch bei None-Rückgabe -
+    report_sink (optional): erhält bei JEDEM Ausgang – auch bei None-Rückgabe –
     eine Fragen-Bilanz {title, module_id, resolved, recognized, emitted,
     unsupported} für die spätere Soll-Ist-Validierung (conversion_validator.py).
     'recognized' = von der QTI-Pipeline erkannte Fragen, 'emitted' = tatsächlich
     als Quiz-Slot gebaute, 'unsupported' = ohne Moodle-Äquivalent verworfene
-    (z.B. Matrix/Zeichnen - dokumentierter, kein fehlerhafter Verlust).
+    (z.B. Matrix/Zeichnen – dokumentierter, kein fehlerhafter Verlust).
 
     Gibt bei Erfolg {"quiz_xml", "category_entries_xml", "category_ids":
     [top_id, cat_id]} zurück, sonst None.
@@ -211,17 +222,17 @@ def build_quiz_activity(node: Dict, manifest, context_id: int, module_id: int,
         return None
 
     # Nur bei WIRKLICH mehreren unterschiedlichen Sektionstiteln als
-    # Section-Überschriften nutzen - ein einzelner Test hat meist nur einen
+    # Section-Überschriften nutzen – ein einzelner Test hat meist nur einen
     # (oft OLATs Standardtitel "Sektion"), dann soll das Quiz eine einzige
     # Section ohne Überschrift bleiben.
-    distinct_titles = {q.get('section_title') for q in generated_questions if q.get('section_title')}
+    distinct_titles = {question.get('section_title') for question in generated_questions if question.get('section_title')}
     use_sections = len(distinct_titles) > 1
 
     question_instances = []
-    for q in generated_questions:
+    for question in generated_questions:
         # Echte OLAT-Punktzahl (MAXSCORE) statt Standardwert 1.0, damit die
         # relative Gewichtung erhalten bleibt (z.B. "Frage 3 zählt doppelt").
-        max_score = q.get('max_score')
+        max_score = question.get('max_score')
         if isinstance(max_score, (int, float)) and max_score > 0:
             maxmark = f"{max_score:.7f}"
         else:
@@ -229,15 +240,24 @@ def build_quiz_activity(node: Dict, manifest, context_id: int, module_id: int,
         question_instances.append({
             'instance_id': id_gen.next(),
             'reference_id': id_gen.next(),
-            'entry_id': q['entry_id'],
+            'entry_id': question['entry_id'],
             'maxmark': maxmark,
-            'section_title': q.get('section_title', '') if use_sections else '',
+            'section_title': question.get('section_title', '') if use_sections else '',
         })
+
+    # Beim Bauen festgestellte Verluste (derzeit nur verworfene Hotspot-
+    # Bereiche): Hinweistext in die Beschreibung, Markierung an den Namen –
+    # sonst fällt der Test erst nach dem Öffnen als nachbearbeitungswürdig auf.
+    notices = [question['activity_notice'] for question in generated_questions
+               if question.get('activity_notice')]
+    if notices:
+        mark_activity_title(node, HOTSPOT_REGIONS_LOST_MARKER)
 
     quiz_xml = _generate_quiz_xml(
         quiz_id=module_id, module_id=module_id, context_id=context_id,
-        title=node.get('title', 'Test'), now=now,
-        question_instances=question_instances, id_gen=id_gen)
+        title=activity_title(node, 'Test'), now=now,
+        question_instances=question_instances, id_gen=id_gen,
+        intro="".join(notices))
 
     if skipped:
         print(f"[*] '{node.get('title')}': {skipped} von {len(questions)} Frage(n) ohne "

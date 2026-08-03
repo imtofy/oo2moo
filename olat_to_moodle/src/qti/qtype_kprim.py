@@ -3,21 +3,20 @@
 OLAT exportiert das als <matchInteraction class="match_krpim">, nicht als
 choiceInteraction: 4 Aussagen in simpleMatchSet[0], feste Ziele
 "correct"/"wrong" in simpleMatchSet[1]. Das <mapping> mit OLATs eigenem
-Scoring wird nicht übernommen - Moodle bekommt stattdessen feste
+Scoring wird nicht übernommen – Moodle bekommt stattdessen feste
 ±25%-Fractions pro Option (multichoice, single=0).
 
 Das weicht vom Original ab: OLAT rechnet z.B. 4/4 richtig=100%, jede
 Falschmarkierung zieht individuell ab; Moodle kennt nur 4/4=100%,
 3/4=75%, 3/4+1 Fehlklick=50%. Ein Fehlklick UND eine übersehene richtige
-Aussage ergeben in Moodle also 50% statt des OLAT-spezifischen Werts -
+Aussage ergeben in Moodle also 50% statt des OLAT-spezifischen Werts –
 bekannter, unvermeidbarer Informationsverlust ohne Kprim-Plugin.
 """
 
-import html as html_lib
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional
 
-from .helpers import (element_inner_html, process_html_and_images,
+from .helpers import (answer_xml, correct_response_pairs, extract_question_text, element_inner_html, process_html_and_images,
                      format_fraction_decimal, build_question_xml, IdGenerator)
 
 
@@ -38,23 +37,9 @@ def parse_kprim(root: ET.Element, vfs: Dict[str, bytes]) -> Optional[Dict]:
     if len(statement_choices) != 4:
         return None
 
-    truth_by_id: Dict[str, str] = {}
-    response_decl = root.find('.//responseDeclaration')
-    if response_decl is not None:
-        for value in response_decl.findall('.//correctResponse/value'):
-            if value.text and ' ' in value.text.strip():
-                stmt_id, label_id = value.text.strip().split(' ', 1)
-                truth_by_id[stmt_id] = label_id
+    truth_by_id: Dict[str, str] = correct_response_pairs(root)
 
-    text_parts = []
-    item_body = root.find('.//itemBody')
-    if item_body is not None:
-        for elem in item_body:
-            if elem.tag != 'matchInteraction':
-                text_parts.append(element_inner_html(elem))
-
-    question_html = '\n'.join(filter(None, text_parts))
-    question_text, text_files = process_html_and_images(question_html, vfs)
+    question_text, text_files = extract_question_text(root, vfs, 'matchInteraction')
 
     choices: List[Dict] = []
     for sc in statement_choices:
@@ -80,25 +65,18 @@ def parse_kprim(root: ET.Element, vfs: Dict[str, bytes]) -> Optional[Dict]:
     }
 
 
-def generate_kprim_xml(q: Dict, id_gen: IdGenerator) -> str:
+def generate_kprim_xml(question: Dict, id_gen: IdGenerator) -> str:
     """Baut einen multichoice-Block (Multiple Answer, ±25%-Fractions) für eine Kprim-Frage.
 
     penalty=0: das ±25%-Fraction-Schema ersetzt die übliche Versuchs-
-    Abzugslogik vollständig - ein zusätzlicher penalty-Abzug würde das
+    Abzugslogik vollständig – ein zusätzlicher penalty-Abzug würde das
     Scoring doppelt bestrafen.
     """
     answer_blocks = []
-    for choice in q['choices']:
+    for choice in question['choices']:
         aid = id_gen.next()
-        safe_text = html_lib.escape(choice['text'])
         decimal_fraction = format_fraction_decimal(choice['fraction'])
-        answer_blocks.append(f"""                    <answer id="{aid}">
-                      <answertext>{safe_text}</answertext>
-                      <answerformat>1</answerformat>
-                      <fraction>{decimal_fraction}</fraction>
-                      <feedback></feedback>
-                      <feedbackformat>1</feedbackformat>
-                    </answer>""")
+        answer_blocks.append(answer_xml(aid, choice['text'], decimal_fraction))
     answers_block = '\n'.join(answer_blocks)
 
     mc_id = id_gen.next()
@@ -122,4 +100,4 @@ def generate_kprim_xml(q: Dict, id_gen: IdGenerator) -> str:
                     <showstandardinstruction>1</showstandardinstruction>
                   </multichoice>"""
 
-    return build_question_xml(q, id_gen, 'multichoice', plugin_inner, penalty="0.0000000")
+    return build_question_xml(question, id_gen, 'multichoice', plugin_inner, penalty="0.0000000")

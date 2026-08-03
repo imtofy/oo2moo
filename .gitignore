@@ -20,20 +20,25 @@ Files/
 # (siehe scripts/merge_olat_courses.py), dürfen nie ins Repo.
 /merged_test_kurs*.zip
 
-# Encrypted-Build-Zweig (CodeEnigma) - wird nicht mehr verwendet, nur noch
-# lokales Experiment, nicht Teil der eigentlichen Distribution.
-codeenigma_build/
-
-# HINWEIS: olat_to_moodle/src/moodle_musterkurs/ ist die auf ~770 KB
-# ausgedünnte Build-Kopie (nur moodle_backup.xml + activities/, ohne den
-# 32-MB-files/-Ballast) und wird BEWUSST mitversioniert, damit der
-# .exe-Build reproduzierbar bleibt. Das große 33-MB-Original liegt unter
+# olat_to_moodle/src/moodle_musterkurs/ ist die auf ~770 KB ausgedünnte
+# Build-Kopie (nur moodle_backup.xml + activities/, ohne den 32-MB-files/-
+# Ballast) und ist bewusst mitversioniert, damit der .exe-Build
+# reproduzierbar bleibt. Das große 33-MB-Original liegt unter
 # Files/moodle_musterkurs (ignoriert).
 
 # build_gui.py (Build-Startzentrale) ist bewusst mitversioniert.
+
+# Arbeitsnotizen (offene Befunde aus Code-Durchgängen) - rein lokal, gehören
+# weder ins private noch ins öffentliche Repo.
+NOTES.md
+NOTES_befunde_archiv.md
 
 # tools/ ist Ablage für lokale Entwicklungs-Werkzeuge (Assets/Testdaten
 # bauen) - nicht Teil des eigentlichen Konverters, nie Ziel der Distribution,
 # deshalb komplett ignoriert. Echte, dauerhaft gebrauchte Skripte (z.B.
 # merge_olat_courses.py) liegen bewusst in scripts/ statt hier.
 olat_to_moodle/tools/
+
+# Lokales Hilfsmittel: sucht ae/oe/ue/ss statt Umlauten und ß
+check_german.py
+check_dashes.py

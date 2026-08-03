@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<activity id="900001" moduleid="900001" modulename="scorm" contextid="900001">
+  <scorm id="900001">
+    <name>SCORM-Paket</name>
+    <scormtype>local</scormtype>
+    <reference></reference>
+    <intro></intro>
+    <introformat>1</introformat>
+    <version>SCORM_1.2</version>
+    <maxgrade>100</maxgrade>
+    <grademethod>1</grademethod>
+    <whatgrade>0</whatgrade>
+    <maxattempt>0</maxattempt>
+    <forcecompleted>0</forcecompleted>
+    <forcenewattempt>0</forcenewattempt>
+    <lastattemptlock>0</lastattemptlock>
+    <masteryoverride>1</masteryoverride>
+    <displayattemptstatus>1</displayattemptstatus>
+    <displaycoursestructure>1</displaycoursestructure>
+    <updatefreq>0</updatefreq>
+    <sha1hash></sha1hash>
+    <md5hash></md5hash>
+    <revision>1</revision>
+    <launch>0</launch>
+    <skipview>0</skipview>
+    <hidebrowse>0</hidebrowse>
+    <hidetoc>0</hidetoc>
+    <nav>1</nav>
+    <navpositionleft>-100</navpositionleft>
+    <navpositiontop>-100</navpositiontop>
+    <auto>0</auto>
+    <popup>0</popup>
+    <options></options>
+    <width>100</width>
+    <height>500</height>
+    <timeopen>0</timeopen>
+    <timeclose>0</timeclose>
+    <timemodified>0</timemodified>
+    <completionstatusrequired>$@NULL@$</completionstatusrequired>
+    <completionscorerequired>$@NULL@$</completionscorerequired>
+    <completionstatusallscos>0</completionstatusallscos>
+    <autocommit>0</autocommit>
+    <scoes>
+    </scoes>
+  </scorm>
+</activity>

@@ -2,7 +2,7 @@
 
 Jeder parse_X() bekommt denselben rohen <assessmentItem>-XML-Baum und muss
 entweder eine erkannte Frage (Dict) oder None (Fallback auf den nächsten
-Fragetyp in der Erkennungskette, siehe qti_pipeline.py) liefern - nie eine
+Fragetyp in der Erkennungskette, siehe qti_pipeline.py) liefern – nie eine
 Exception."""
 
 import xml.etree.ElementTree as ET
@@ -24,7 +24,7 @@ from qti.qtype_drawing import parse_drawing
 
 _EMPTY_ITEM = ET.fromstring('<assessmentItem title="Leer"><itemBody></itemBody></assessmentItem>')
 
-# Jeder Parser bekommt (root, vfs) - vfs bleibt für diese Tests immer leer.
+# Jeder Parser bekommt (root, vfs) – vfs bleibt für diese Tests immer leer.
 ALL_PARSERS = [
     parse_essay, parse_kprim, parse_matching, parse_order, parse_hottext,
     parse_hotspot, parse_inlinechoice, parse_cloze, parse_matrix, parse_drawing,
@@ -48,7 +48,7 @@ def _true_false_item(true_text="Wahr", false_text="Falsch", cardinality="single"
 
 
 def _multichoice_item(cardinality="multiple", correct=("a", "c")):
-    correct_values = "".join(f"<value>{c}</value>" for c in correct)
+    correct_values = "".join(f"<value>{value}</value>" for value in correct)
     xml = f"""<assessmentItem title="Multiple-Choice-Frage">
       <responseDeclaration identifier="RESPONSE" cardinality="{cardinality}">
         <correctResponse>{correct_values}</correctResponse>
@@ -102,14 +102,14 @@ def test_truefalse_returns_none_for_multiple_cardinality():
 def test_multichoice_recognizes_multiple_cardinality_and_splits_fractions():
     result = parse_multichoice(_multichoice_item(cardinality="multiple", correct=("a", "c")), {})
     assert result['single'] == 'false'
-    correct_fractions = {c['id']: c['fraction'] for c in result['choices'] if c['is_correct']}
+    correct_fractions = {choice['id']: choice['fraction'] for choice in result['choices'] if choice['is_correct']}
     assert correct_fractions['a'] == correct_fractions['c']
 
 
 def test_multichoice_recognizes_single_cardinality():
     result = parse_multichoice(_multichoice_item(cardinality="single", correct=("a",)), {})
     assert result['single'] == 'true'
-    by_id = {c['id']: c['fraction'] for c in result['choices']}
+    by_id = {choice['id']: choice['fraction'] for choice in result['choices']}
     assert by_id['a'] == "100.0"
     assert by_id['b'] == "0.0"
 
@@ -149,8 +149,8 @@ def test_all_remaining_parsers_return_none_gracefully_on_empty_item():
 
 def test_all_remaining_parsers_return_none_on_completely_unrelated_item():
     # Ein assessmentItem, das eher zu Multiple-Choice passt (choiceInteraction
-    # mit 3 Optionen) - keiner der anderen, spezielleren Parser darf das an
+    # mit 3 Optionen) – keiner der anderen, spezielleren Parser darf das an
     # sich reißen.
     unrelated = _multichoice_item()
     for parser in ALL_PARSERS:
-        assert parser(unrelated, {}) is None, f"{parser.__name__} griff faelschlich bei fremdem Fragetyp"
+        assert parser(unrelated, {}) is None, f"{parser.__name__} griff fälschlich bei fremdem Fragetyp"

@@ -1,12 +1,12 @@
-"""Komprimiert Videos, PDFs und PPTX in einem OLAT-Kursexport verlustbehaftet -
+"""Komprimiert Videos, PDFs und PPTX in einem OLAT-Kursexport verlustbehaftet –
 eigenständiges Zusatzprogramm, NICHT Teil der Haupt-.exe.
 
 War ursprünglich als Test-Modus im Hauptprogramm eingebaut, wurde aber wieder
 rausgenommen: PyMuPDF+Pillow allein blähten die Haupt-.exe um ~80MB auf, für
 ein Feature, das im Alltag kaum gebraucht wird (tools/placeholder.py deckt den
-üblichen Testfall - schnell große Dateien loswerden - bereits ab, ohne diese
+üblichen Testfall – schnell große Dateien loswerden – bereits ab, ohne diese
 Abhängigkeiten). Bleibt hier als eigenständiges Skript erhalten, falls doch
-nochmal echte, aber kleinere Testdateien gebraucht werden - braucht eigene
+nochmal echte, aber kleinere Testdateien gebraucht werden – braucht eigene
 requirements (PyMuPDF, Pillow) und ffmpeg auf dem PATH, beides NICHT Teil der
 requirements.txt des Hauptprogramms.
 
@@ -14,29 +14,29 @@ Der Originalinhalt bleibt sichtbar/abspielbar, nur in reduzierter Qualität
 (siehe TEST_COMPRESSION_LEVELS unten für die genauen Werte).
 
 Videos: ffmpeg-Re-Encode (Auflösung/Framerate/CRF gedeckelt). Braucht ffmpeg
-auf dem PATH - fehlt es, wird die Video-Kompression übersprungen (mit
+auf dem PATH – fehlt es, wird die Video-Kompression übersprungen (mit
 Hinweis), der Rest läuft weiter. Hardware-Encoding (NVENC) wurde getestet,
 brachte bei den hier üblichen kleinen Zielauflösungen aber keinen messbaren
 Zeitgewinn (Flaschenhals liegt woanders) und ist zudem nicht auf jedem
-Rechner verfügbar - deshalb bewusst bei Software-libx264 geblieben.
+Rechner verfügbar – deshalb bewusst bei Software-libx264 geblieben.
 
 PDFs: jede Seite wird als Pixmap gerendert und als JPEG neu eingebettet (über
-PyMuPDF+Pillow) - das ist die einzige verlässliche Art, eingebettete
+PyMuPDF+Pillow) – das ist die einzige verlässliche Art, eingebettete
 Scan-Bilder in einer PDF wirklich kleiner zu kriegen. Bei einer PDF mit
 echtem (nicht gescanntem) Text geht dabei die Text-Auswahl/Suche verloren,
 der Text selbst bleibt aber lesbar (nur nicht mehr scharf wie Vektortext).
 
-PPTX: bleibt eine echte, weiterhin in PowerPoint öffenbare Datei - PPTX ist
+PPTX: bleibt eine echte, weiterhin in PowerPoint öffenbare Datei – PPTX ist
 selbst nur ein zip, dessen Bilder/Audio unter ppt/media/ liegen. Bei
 Vorlesungsaufzeichnungen mit Folien-Vertonung steckt die eigentliche Größe
 fast immer im Audio (M4A/AAC, oft in hoher Stereo-Qualität), nicht in den
-Bildern - deshalb wird beides angefasst.
+Bildern – deshalb wird beides angefasst.
 
 Durchsucht rekursiv auch verschachtelte zips (repo.zip/page.zip/oonode.zip/
-oocoursefolder.zip - OLAT legt Inhalte in allen davon ab). Jede gefundene
-große Datei ist unabhängig von jeder anderen - deshalb läuft die eigentliche
+oocoursefolder.zip – OLAT legt Inhalte in allen davon ab). Jede gefundene
+große Datei ist unabhängig von jeder anderen – deshalb läuft die eigentliche
 Kompression über einen ProcessPoolExecutor parallel (siehe compress_course_zip,
-Obergrenze TEST_COMPRESSION_MAX_WORKERS unten - alle Kerne gleichzeitig
+Obergrenze TEST_COMPRESSION_MAX_WORKERS unten – alle Kerne gleichzeitig
 würde den Rechner nebenbei spürbar lahmlegen), statt Datei für Datei
 nacheinander. Bei einem Kurs mit vielen großen Dateien ist das trotzdem noch
 ein langsamer, CPU-intensiver Vorgang (echtes Re-Encodieren/Rendern).
@@ -65,7 +65,7 @@ PPTX_AUDIO_EXTS = ('.m4a', '.mp3', '.wav', '.wma')
 _PPTX_AUDIO_FORMATS = {'.m4a': 'ipod', '.mp3': 'mp3', '.wav': 'wav', '.wma': 'ipod'}
 
 # Zwei Stufen: 'normal' bleibt brauchbar (Videos noch ansehnlich, PDFs/PPTX
-# noch lesbar), 'ultra' ist bewusst kompromisslos auf Dateigröße getrimmt -
+# noch lesbar), 'ultra' ist bewusst kompromisslos auf Dateigröße getrimmt –
 # nur für den reinen Test-Import gedacht, nicht zum Ansehen der Inhalte.
 TEST_COMPRESSION_LEVELS = {
     "normal": {
@@ -80,7 +80,7 @@ TEST_COMPRESSION_LEVELS = {
     },
 }
 
-# Obergrenze für den ProcessPoolExecutor - alle CPU-Kerne gleichzeitig
+# Obergrenze für den ProcessPoolExecutor – alle CPU-Kerne gleichzeitig
 # auszulasten macht den Rechner sonst für alles andere spürbar träge.
 TEST_COMPRESSION_MAX_WORKERS = 4
 
@@ -92,12 +92,12 @@ def ffmpeg_available() -> bool:
 def _run_ffmpeg_on_bytes(data: bytes, suffix: str, ffmpeg_args: list) -> bytes:
     """Schickt data durch ffmpeg und gibt die stdout-Bytes zurück.
 
-    Die EINGABE braucht eine echte, zurückspulbare Datei statt pipe:0 - ein
+    Die EINGABE braucht eine echte, zurückspulbare Datei statt pipe:0 – ein
     über eine Pipe gelesenes MP4/MOV/M4A schlägt fehl, sobald sein moov-Atom
     (Metadaten-Index) am Dateiende liegt (üblich bei Rohaufnahmen aus Zoom/
     OBS ohne Nachbearbeitung), weil ffmpeg dafür zurückspulen muss und Pipes
     das nicht können ("Could not find codec parameters", "partial file").
-    Die AUSGABE darf weiter über pipe:1 laufen - frag_keyframe+empty_moov
+    Die AUSGABE darf weiter über pipe:1 laufen – frag_keyframe+empty_moov
     (siehe Aufrufer) macht ihr moov-Atom bewusst leer/vorne, genau um das
     zu vermeiden."""
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
@@ -134,7 +134,7 @@ def _compress_pdf(data: bytes, level: dict) -> bytes:
         new_page = out.new_page(width=page.rect.width, height=page.rect.height)
         new_page.insert_image(page.rect, stream=buf.getvalue())
     result = out.tobytes(deflate=True, garbage=4)
-    # Nur übernehmen, wenn's tatsächlich kleiner wird - manche PDFs (z.B.
+    # Nur übernehmen, wenn's tatsächlich kleiner wird – manche PDFs (z.B.
     # mit echtem Vektortext statt Scan) werden durchs Rastern eher größer.
     return result if len(result) < len(data) else data
 
@@ -163,7 +163,7 @@ def _shrink_pptx_audio(data: bytes, ext: str, level: dict) -> bytes:
 
 def _compress_pptx(data: bytes, level: dict, compress_audio: bool) -> bytes:
     """Lässt die PPTX-Struktur unangetastet, verkleinert nur Bilder (und bei
-    verfügbarem ffmpeg auch Audio) unter ppt/media/ - bleibt danach eine ganz
+    verfügbarem ffmpeg auch Audio) unter ppt/media/ – bleibt danach eine ganz
     normale, öffenbare PPTX statt einer PDF."""
     src_zf = zipfile.ZipFile(io.BytesIO(data))
     out_buf = io.BytesIO()
@@ -187,7 +187,7 @@ def _compress_pptx(data: bytes, level: dict, compress_audio: bool) -> bytes:
 
 def _report_result(name: str, original: bytes, compressed: bytes) -> bool:
     """Meldet das Ergebnis einer Kompression auf stdout. Nur eine Zeile pro
-    Datei, nicht pro Bild/Audiospur innerhalb einer PPTX - das wäre zu
+    Datei, nicht pro Bild/Audiospur innerhalb einer PPTX – das wäre zu
     kleinteilig. Gibt zurück, ob tatsächlich gemeldet wurde (für die Zähler
     in compress_course_zip)."""
     if len(compressed) >= len(original):
@@ -213,10 +213,10 @@ def _category_for(name: str, options: dict) -> str | None:
 def _collect_tasks(data: bytes, threshold: int, options: dict,
                    path_chain: tuple, tasks: list) -> None:
     """Durchsucht ein (verschachteltes) zip rekursiv und sammelt jede zu
-    komprimierende Datei als (path_chain, name, data, category) in tasks -
+    komprimierende Datei als (path_chain, name, data, category) in tasks –
     path_chain identifiziert die Fundstelle eindeutig (Kette der
     zip-Dateinamen bis dahin), damit _rebuild sie später wiederfindet.
-    Komprimiert hier noch NICHTS - das passiert gesammelt und parallel in
+    Komprimiert hier noch NICHTS – das passiert gesammelt und parallel in
     compress_course_zip."""
     try:
         zf = zipfile.ZipFile(io.BytesIO(data))
@@ -236,7 +236,7 @@ def _collect_tasks(data: bytes, threshold: int, options: dict,
 
 
 def _compress_task(task: tuple) -> tuple:
-    """Läuft in einem Worker-Prozess (siehe compress_course_zip) - komprimiert
+    """Läuft in einem Worker-Prozess (siehe compress_course_zip) – komprimiert
     genau eine Datei. Gibt (path_chain, name, komprimierte/Original-Bytes,
     Fehlertext-oder-None) zurück, druckt selbst nichts (Prints aus
     Worker-Prozessen kämen im Hauptprozess durcheinander an)."""
@@ -284,14 +284,14 @@ def compress_course_zip(src_path: str, dst_path: str, *, video_level: str | None
     """Schreibt eine test-komprimierte Kopie von src_path nach dst_path.
 
     Jede Kategorie hat ihre eigene Stufe (None = unangetastet lassen, sonst
-    ein Schlüssel aus TEST_COMPRESSION_LEVELS) - wer nur PDFs braucht, lässt
+    ein Schlüssel aus TEST_COMPRESSION_LEVELS) – wer nur PDFs braucht, lässt
     Videos/PPTX auf None. Die eingebetteten Audiospuren einer PPTX brauchen
     ffmpeg genau wie Video, hängen aber an der PPTX-Stufe, nicht an der
-    Video-Stufe - beide sind unabhängig voneinander abschaltbar.
+    Video-Stufe – beide sind unabhängig voneinander abschaltbar.
 
     Läuft zweistufig: erst _collect_tasks sammelt ALLE zu komprimierenden
     Dateien über die ganze (verschachtelte) zip-Struktur hinweg, dann
-    komprimiert ein ProcessPoolExecutor sie parallel über alle CPU-Kerne -
+    komprimiert ein ProcessPoolExecutor sie parallel über alle CPU-Kerne –
     jede Datei ist unabhängig von jeder anderen, bei vielen großen Dateien
     ist das der Unterschied zwischen "dauert ewig" und einem Bruchteil
     davon. Erst danach baut _rebuild die zip-Struktur mit den Ergebnissen
@@ -334,7 +334,7 @@ def compress_course_zip(src_path: str, dst_path: str, *, video_level: str | None
                      for path_chain, name, data, category in tasks]
         # as_completed statt pool.map, damit jede Zeile erscheint, sobald IHRE
         # Datei fertig ist, statt erst alle auf einmal nach Ende des
-        # langsamsten Tasks - fühlt sich bei vielen Dateien lebendiger an.
+        # langsamsten Tasks – fühlt sich bei vielen Dateien lebendiger an.
         with concurrent.futures.ProcessPoolExecutor(max_workers=TEST_COMPRESSION_MAX_WORKERS) as pool:
             futures = [pool.submit(_compress_task, t) for t in pool_tasks]
             for future in concurrent.futures.as_completed(futures):
@@ -362,7 +362,7 @@ def compress_course_zip(src_path: str, dst_path: str, *, video_level: str | None
 
 
 if __name__ == "__main__":
-    # freeze_support() ist hier nicht nötig - dieses Skript läuft nur als
+    # freeze_support() ist hier nicht nötig – dieses Skript läuft nur als
     # normales Python-Skript, nicht als PyInstaller-.exe mit ProcessPoolExecutor
     # (siehe Docstring oben, wieso das bei der Haupt-.exe nötig war).
     parser = argparse.ArgumentParser(description=__doc__)

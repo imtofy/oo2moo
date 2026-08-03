@@ -1,9 +1,9 @@
-"""Fragetyp Matrix (n:m-Relation) - nur Erkennung, bewusst kein Generator.
+"""Fragetyp Matrix (n:m-Relation) – nur Erkennung, bewusst kein Generator.
 
 <matchInteraction class="match_matrix"> erlaubt echte n:m-Zuordnungen
 (eine Quelle darf mit mehreren Zielen korrekt gepaart sein), nicht nur
 1:1 wie normales matching. Moodle hat ohne Plugin keinen n:m-Fragetyp,
-und jede Notlösung würde das Scoring gegenüber dem Original verändern -
+und jede Notlösung würde das Scoring gegenüber dem Original verändern –
 deshalb nur Erkennung + Skip+Log statt einer stillen Annahme im Parser,
 kein Generator.
 

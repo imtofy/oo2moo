@@ -1,4 +1,4 @@
-"""Tests für olat_parser.py - insbesondere has_children (leeres <children/>
+"""Tests für olat_parser.py – insbesondere has_children (leeres <children/>
 vs. echte Kind-Elemente) und die Tiefenbegrenzung/flattened-Vererbung, da
 beides an OLATs XML-Eigenheiten hängt und leicht wieder falsch werden kann."""
 
@@ -9,7 +9,7 @@ from conversion.olat_parser import _walk_tree, _extract_node_fields, _build_url_
 
 def _wrapper(ident, node_type, title, children_xml=""):
     """Baut einen <org.olat.course.tree.CourseEditorTreeNode>-Wrapper mit
-    <cn>+<children>, wie ihn OLATs editortreemodel.xml tatsächlich schreibt -
+    <cn>+<children>, wie ihn OLATs editortreemodel.xml tatsächlich schreibt –
     <children> steht IMMER da, auch leer als Self-Closing-Tag."""
     xml = f"""<org.olat.course.tree.CourseEditorTreeNode>
       <cn class="org.olat.course.nodes.{node_type}CourseNode">
@@ -44,10 +44,10 @@ def test_children_with_real_content_means_has_children_true():
 
 
 def test_node_beyond_max_depth_gets_flattened_and_children_inherit_it():
-    # Drei has_children-Ebenen tief - MAX_SECTION_DEPTH=2 erlaubt genau zwei
+    # Drei has_children-Ebenen tief – MAX_SECTION_DEPTH=2 erlaubt genau zwei
     # echte Verschachtelungen (Ebene1 als Section, Ebene2 als Subsection,
     # Ebene3 selbst liegt noch genau auf der Grenze und bleibt gültig
-    # platziert) - erst DEREN Kinder (eine vierte Ebene) können keinen
+    # platziert) – erst DEREN Kinder (eine vierte Ebene) können keinen
     # weiteren Container mehr bekommen und werden 'flattened'.
     level3 = """<org.olat.course.tree.CourseEditorTreeNode>
       <cn class="org.olat.course.nodes.STCourseNode">
@@ -81,14 +81,42 @@ def test_node_beyond_max_depth_gets_flattened_and_children_inherit_it():
     assert by_title['KindVonEbene3']['flattened'] is True
 
 
-def test_unnamed_node_and_participant_list_are_filtered_by_walk_tree_caller():
-    # _walk_tree selbst filtert nicht - das übernimmt main.py über
-    # deleted_nodes. Hier nur sicherstellen, dass 'Unbenannt' erkannt wird.
-    elem = _wrapper("1", "SP", "Unbenannt")
+def test_node_without_any_title_lands_in_deleted_nodes():
+    # _walk_tree selbst filtert nicht – das übernimmt main.py über
+    # deleted_nodes. Ein <cn> ohne shortTitle/longTitle gehört dort hinein.
+    elem = ET.fromstring("""<org.olat.course.tree.CourseEditorTreeNode>
+      <cn class="org.olat.course.nodes.SPCourseNode"><ident>1</ident></cn>
+      <children></children>
+    </org.olat.course.tree.CourseEditorTreeNode>""")
     nodes, deleted = [], []
     _walk_tree(elem, [], nodes, deleted)
     assert nodes == []
     assert deleted[0]['reason'] == 'Element ist unbenannt'
+
+
+def test_node_actually_named_unbenannt_is_kept():
+    # 'Unbenannt' ist ein zulässiger, vom Autor vergebener Name und darf nicht
+    # mit dem Ersatzwert für "kein Titel" verwechselt werden – sonst fliegt der
+    # Baustein mit raus.
+    elem = _wrapper("1", "SP", "Unbenannt")
+    nodes, deleted = [], []
+    _walk_tree(elem, [], nodes, deleted)
+    assert [n['title'] for n in nodes] == ['Unbenannt']
+    assert deleted == []
+
+
+def test_participant_list_is_recognised_by_type_not_by_name():
+    # Erkennung allein über den Bausteintyp: ein gleichnamiger, inhaltlich
+    # anderer Baustein darf nicht mitverworfen werden.
+    nodes, deleted = [], []
+    _walk_tree(_wrapper("1", "Members", "Wer ist dabei?"), [], nodes, deleted)
+    assert nodes == []
+    assert deleted[0]['reason'] == 'Teilnehmerliste wird nicht übernommen'
+
+    nodes, deleted = [], []
+    _walk_tree(_wrapper("2", "SP", "Liste der Teilnehmer:innen"), [], nodes, deleted)
+    assert [n['title'] for n in nodes] == ['Liste der Teilnehmer:innen']
+    assert deleted == []
 
 
 def test_extract_node_fields_prefers_learning_objectives_over_description():
@@ -144,7 +172,7 @@ def test_parse_olat_export_missing_file_returns_empty_lists():
 # --- Absichtlich kaputte/unerwartete Eingaben (Fehlerbehandlung) ---
 
 def test_parse_olat_export_corrupt_zip_does_not_raise(tmp_path):
-    # Datei existiert, ist aber gar kein ZIP - darf main.py nicht mit einer
+    # Datei existiert, ist aber gar kein ZIP – darf main.py nicht mit einer
     # Exception abschießen, sondern soll (leer, aber gültig) zurückgeben.
     broken = tmp_path / "kaputt.zip"
     broken.write_bytes(b"Das ist kein ZIP-Archiv, nur irgendein Text.")
@@ -155,7 +183,7 @@ def test_parse_olat_export_corrupt_zip_does_not_raise(tmp_path):
 
 def test_parse_olat_export_zip_without_editortreemodel_returns_empty_lists(tmp_path):
     # Gültiges ZIP, aber ohne die erwartete editortreemodel.xml (z.B. ein
-    # falsch ausgewähltes Export-ZIP) - soll leer zurückgeben, nicht abstürzen.
+    # falsch ausgewähltes Export-ZIP) – soll leer zurückgeben, nicht abstürzen.
     import zipfile
     zip_path = tmp_path / "ohne_treemodel.zip"
     with zipfile.ZipFile(zip_path, 'w') as zf:
@@ -165,19 +193,20 @@ def test_parse_olat_export_zip_without_editortreemodel_returns_empty_lists(tmp_p
     assert deleted == []
 
 
-def test_extract_node_fields_missing_ident_and_titles_falls_back_to_unbenannt():
-    # <cn> ganz ohne shortTitle/longTitle - title muss auf den Default
-    # zurückfallen statt eine Exception zu werfen.
+def test_extract_node_fields_without_titles_returns_none_as_title():
+    # <cn> ganz ohne shortTitle/longTitle – title muss None sein (nicht ein
+    # Anzeigetext, der sich nicht von einem echten Titel unterscheiden ließe)
+    # statt eine Exception zu werfen.
     cn = ET.fromstring('<cn class="org.olat.course.nodes.STCourseNode"></cn>')
     title, node_type, fields = _extract_node_fields(cn)
-    assert title == 'Unbenannt'
+    assert title is None
     assert node_type == 'st'
     assert fields['description'] == ''
 
 
 def test_walk_tree_wrapper_without_cn_element_is_skipped_gracefully():
-    # <children> ohne jedes <...CourseNode>-Kind (z.B. durch OLAT-Exportfehler) -
-    # darf nicht crashen, produziert einfach keinen Knoten.
+    # <children> ohne jedes <...CourseNode>-Kind (z.B. durch OLAT-Exportfehler) –
+    # darf nicht crashen, produziert keinen Knoten.
     elem = ET.fromstring("<org.olat.course.tree.CourseEditorTreeNode><children></children>"
                          "</org.olat.course.tree.CourseEditorTreeNode>")
     nodes, deleted = [], []

@@ -7,9 +7,8 @@ Braucht MOODLE_WWWROOT/MOODLE_SITE_HASH aus config.py.
 """
 
 import os
-import html
 import xml.etree.ElementTree as ET
-from .file_manager import write_xml
+from .file_manager import write_xml, escape_xml_text
 from config import MOODLE_WWWROOT, MOODLE_SITE_HASH
 
 DEFAULT_FULLNAME = "Imported OpenOLAT Course"
@@ -21,7 +20,7 @@ def get_template_mapping(template_dir):
     Moodle-Modulnamen gehört (z.B. 'quiz' → .../activities/quiz_215336).
 
     Für 'forum' liegen im Musterkurs ZWEI Vorlagen (allgemeines Forum und
-    Ankündigungen, type=news+forcesubscribe=1) - ohne die Sonderbehandlung
+    Ankündigungen, type=news+forcesubscribe=1) – ohne die Sonderbehandlung
     unten würde je nach Zufall der Reihenfolge in moodle_backup.xml die
     Ankündigungen-Vorlage als Standard für ALLE Forum-Typen (fo/dialog/
     blog/info) landen. main.py schaltet 'info' danach gezielt per
@@ -60,8 +59,8 @@ def get_template_mapping(template_dir):
 def generate_course_xml(now, fullname=DEFAULT_FULLNAME, shortname=DEFAULT_SHORTNAME):
     """Baut die course.xml (Kurs-Grunddaten: Name, Format, Zeitstempel)."""
     return f"""<course id="1" contextid="1">
-  <shortname>{html.escape(shortname)}</shortname>
-  <fullname>{html.escape(fullname)}</fullname>
+  <shortname>{escape_xml_text(shortname)}</shortname>
+  <fullname>{escape_xml_text(fullname)}</fullname>
   <idnumber></idnumber>
   <summary></summary>
   <summaryformat>1</summaryformat>
@@ -97,17 +96,17 @@ def generate_course_xml(now, fullname=DEFAULT_FULLNAME, shortname=DEFAULT_SHORTN
 def generate_section_xml(section_id, number, now, title, module_ids=None, component=None, itemid=None,
                          summary=""):
     """component/itemid nur bei einem Moodle-Unterabschnitt gesetzt
-    (component='mod_subsection', itemid=Instanz-ID der subsection-Aktivität) -
+    (component='mod_subsection', itemid=Instanz-ID der subsection-Aktivität) –
     verknüpft diesen Abschnitt als deren Inhalt; normale Abschnitte bleiben NULL.
 
     summary ist bereits fertig aufbereitetes HTML (wie bei jeder Aktivität,
-    siehe node_processor.build_node_content) - html.escape(quote=False) statt
+    siehe node_processor.build_node_content) – html.escape(quote=False) statt
     ElementTree, weil diese Funktion (anders als moodle_xml.py) die XML per
     f-String baut und deshalb & / < / > selbst maskieren muss, sonst würden
     echte HTML-Tags in der Beschreibung als XML-Kindelemente fehlinterpretiert."""
     sequence = ",".join(str(mid) for mid in module_ids) if module_ids else ""
-    safe_title = str(title).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    safe_summary = html.escape(summary, quote=False) if summary else ""
+    safe_title = escape_xml_text(title)
+    safe_summary = escape_xml_text(summary) if summary else ""
     component_val = component if component else "$@NULL@$"
     itemid_val = itemid if itemid is not None else "$@NULL@$"
     return f"""<section id="{section_id}">
@@ -127,19 +126,19 @@ def generate_section_xml(section_id, number, now, title, module_ids=None, compon
 def generate_moodle_backup_xml(processed_activities, sections, now, backup_id,
                                 fullname=DEFAULT_FULLNAME, shortname=DEFAULT_SHORTNAME,
                                 has_questions=False, has_blocks=False):
-    """Baut die äußere moodle_backup.xml - das Inhaltsverzeichnis des ganzen Archivs.
+    """Baut die äußere moodle_backup.xml – das Inhaltsverzeichnis des ganzen Archivs.
 
     Die 'questionbank'-Einstellung ist entscheidend: steht sie auf 0,
     ignoriert Moodle die komplette Fragenbank-Restaurierung, unabhängig
-    davon, was in questions.xml steht - deshalb wird sie hier dynamisch
+    davon, was in questions.xml steht – deshalb wird sie hier dynamisch
     auf 1 gesetzt, sobald has_questions True ist. Analog 'blocks': steht sie
     auf 0, ignoriert Moodle jeden Ordner unter course/blocks/, egal was dort
-    liegt - ein echter Export (Kurs mit manuell hinzugefügtem Kalender-Block)
+    liegt – ein echter Export (Kurs mit manuell hinzugefügtem Kalender-Block)
     zeigt keine weitere Block-spezifische Einstellung, nur diesen einen
     globalen Schalter.
     """
-    safe_fullname = html.escape(fullname)
-    safe_shortname = html.escape(shortname)
+    safe_fullname = escape_xml_text(fullname)
+    safe_shortname = escape_xml_text(shortname)
     xml = f"""<moodle_backup>
   <information>
     <name>backup.mbz</name>
@@ -176,7 +175,7 @@ def generate_moodle_backup_xml(processed_activities, sections, now, backup_id,
       <sections>"""
 
     for sec_id, sec_data in sections.items():
-        safe_title = str(sec_data['title']).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        safe_title = escape_xml_text(sec_data['title'])
         parentcmid = sec_data.get('parentcmid') or ''
         modname = sec_data.get('modname') or ''
         xml += (f"""<section><sectionid>{sec_id}</sectionid><title>{safe_title}</title>"""
@@ -187,14 +186,14 @@ def generate_moodle_backup_xml(processed_activities, sections, now, backup_id,
       <activities>"""
 
     for act_id, m_type, sec_id, act_title in processed_activities:
-        safe_act_title = str(act_title).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        safe_act_title = escape_xml_text(act_title)
         # Moodles Restore erkennt eine Aktivität nur dann als "in einem
         # Unterabschnitt" (SUBACTIVITY_LEVEL statt
-        # ACTIVITY_LEVEL), wenn dieses Feld gesetzt ist - unabhängig davon,
+        # ACTIVITY_LEVEL), wenn dieses Feld gesetzt ist – unabhängig davon,
         # ob ihre Sektion selbst schon korrekt als Unterabschnitt (component=
         # mod_subsection) markiert ist. Ohne insubsection versucht die
         # Unterabschnitts-Sektion (Ebene 17), eine Abhängigkeit auf die
-        # Aktivität als Ebene 13 zu setzen - Moodle lehnt das als
+        # Aktivität als Ebene 13 zu setzen – Moodle lehnt das als
         # "cannot_add_upper_level_dependency" ab, weil eine Abhängigkeit nie
         # auf eine HÖHERE Ebene zeigen darf.
         insubsection = 1 if sections.get(sec_id, {}).get("component") == "mod_subsection" else ""
@@ -238,7 +237,7 @@ def generate_moodle_backup_xml(processed_activities, sections, now, backup_id,
         setting_name = f"{m_type}_{act_id}"
         # Wiki ist der einzige Modultyp, bei dem Moodles eigenes Restore
         # (restore_wiki_stepslib.php) den kompletten Seiteninhalt hinter
-        # userinfo versteckt - ohne userinfo=1 bliebe jede Seite unbeachtet,
+        # userinfo versteckt – ohne userinfo=1 bliebe jede Seite unbeachtet,
         # egal was in wiki.xml steht. Enthält trotzdem keine echten OLAT-
         # Autor:innen (userid bleibt in wiki_builder.py überall 0).
         userinfo = 1 if m_type == "wiki" else 0
@@ -255,7 +254,8 @@ def generate_moodle_backup_xml(processed_activities, sections, now, backup_id,
     return xml
 
 
-def create_empty_meta_files(temp_dir, question_categories_xml: str = ""):
+def create_empty_meta_files(temp_dir, question_categories_xml: str = "",
+                            gradebook_xml: str = ""):
     """Schreibt alle kursweiten Metadaten-Dateien, die keinen Baustein-eigenen
     Inhalt haben. question_categories_xml ist leer bei Kursen ohne Tests,
     dann bleibt questions.xml die leere Standardstruktur."""
@@ -266,7 +266,7 @@ def create_empty_meta_files(temp_dir, question_categories_xml: str = ""):
         "questions.xml": f"<question_categories>\n{question_categories_xml}\n</question_categories>"
                          if question_categories_xml else "<question_categories></question_categories>",
         "roles.xml": "<roles_definition></roles_definition>",
-        "gradebook.xml": '<gradebook></gradebook>',
+        "gradebook.xml": gradebook_xml or "<gradebook></gradebook>",
         "groups.xml": "<groups></groups>",
         "completion.xml": "<course_completion></course_completion>",
         "grade_history.xml": "<grade_history></grade_history>"

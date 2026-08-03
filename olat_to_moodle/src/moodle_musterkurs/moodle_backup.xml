@@ -105,6 +105,14 @@
           <insubsection></insubsection>
         </activity>
         <activity>
+          <moduleid>900001</moduleid>
+          <sectionid>62587</sectionid>
+          <modulename>scorm</modulename>
+          <title>SCORM-Paket</title>
+          <directory>activities/scorm_900001</directory>
+          <insubsection></insubsection>
+        </activity>
+        <activity>
           <moduleid>209282</moduleid>
           <sectionid>62587</sectionid>
           <modulename>folder</modulename>
@@ -680,6 +688,18 @@
         <level>activity</level>
         <activity>resource_209279</activity>
         <name>resource_209279_userinfo</name>
+        <value>0</value>
+      </setting>
+      <setting>
+        <level>activity</level>
+        <activity>scorm_900001</activity>
+        <name>scorm_900001_included</name>
+        <value>1</value>
+      </setting>
+      <setting>
+        <level>activity</level>
+        <activity>scorm_900001</activity>
+        <name>scorm_900001_userinfo</name>
         <value>0</value>
       </setting>
       <setting>

@@ -18,7 +18,7 @@ def _is_course_node(elem) -> bool:
 
 
 def _build_url_from_parts(parts: Dict[str, str]) -> str:
-    """Baut aus proto/host/port/uri/query eine vollständige URL zusammen -
+    """Baut aus proto/host/port/uri/query eine vollständige URL zusammen –
     'tu'-Knoten (Externe Seite) speichern ihre Adresse in OLAT zerlegt statt
     als fertigen String. Standardport 80/443 wird weggelassen (redundant)."""
     proto = parts.get('proto', 'https')
@@ -40,7 +40,7 @@ def _build_url_from_parts(parts: Dict[str, str]) -> str:
 
 def _iter_own_entries(elem):
     """Liefert alle <entry>-Elemente EINES Knotens in Dokumentreihenfolge, steigt
-    dabei aber NICHT in verschachtelte CourseNode-Elemente (Kind-Bausteine) ab -
+    dabei aber NICHT in verschachtelte CourseNode-Elemente (Kind-Bausteine) ab –
     ein einfaches elem.iter('entry') würde sonst deren Konfiguration mit
     einsammeln, und Eltern-Knoten würden fälschlich html_file/rel_path/url
     ihrer Kinder erben (letzter Wert gewinnt beim Auslesen)."""
@@ -56,7 +56,7 @@ def _entry_key_value(entry):
     """Liest Schlüssel/Wert eines <entry>-Elements aus (Schlüssel immer <string>,
     Wert je nach Typ <string>/<int>/<null/>). Geht positionell über die
     beiden Kind-Elemente, damit auch <int>/<null/>-Werte (z.B. 'port',
-    'query') erfasst werden - ein reines list(entry.iter('string')) würde
+    'query') erfasst werden – ein reines list(entry.iter('string')) würde
     die sonst übersehen. (key, val) mit val=None bei <null/>."""
     children = list(entry)
     if len(children) < 2:
@@ -68,20 +68,27 @@ def _entry_key_value(entry):
 
 
 # Moodle bildet Kurshierarchien nur zweistufig ab (Abschnitt + EIN Level
-# Unterabschnitt, siehe mod_subsection) - eine dritte OLAT-Strukturebene
+# Unterabschnitt, siehe mod_subsection) – eine dritte OLAT-Strukturebene
 # ließe sich nicht mehr als eigene Ebene darstellen und wird daher
 # stattdessen dem tiefsten noch unterstützten Abschnitt zugeschlagen.
 MAX_SECTION_DEPTH = 2
+
+# Klassenname der OLAT-Bedingung, die einen Baustein hinter ein Passwort legt.
+# Steht in der Kursstruktur als Element-Tag unter <additionalConditions>.
+PASSWORD_CONDITION_CLASS = 'org.olat.course.condition.additionalconditions.PasswordCondition'
 
 
 def _extract_node_fields(cn_elem) -> Tuple[str, str, Dict]:
     """Liest Titel/Typ/Inhaltsquellen EINES <cn>-Elements aus (ohne Verschachtelung).
 
-    Gibt (title, node_type, node_dict_ohne_ident) zurück - ident/section-
+    Gibt (title, node_type, node_dict_ohne_ident) zurück – ident/section-
     Zugehörigkeit ergänzt der Aufrufer (_walk_tree)."""
     cls = str(cn_elem.get('class', ''))
 
-    title = 'Unbenannt'
+    # None statt eines Anzeigetexts, wenn OLAT keinen Titel liefert – der
+    # Aufrufer erkennt den Fall dadurch eindeutig. Ein Baustein, den jemand
+    # tatsächlich "Unbenannt" genannt hat, wird so nicht mitverworfen.
+    title = None
     short_elem = cn_elem.find('shortTitle')
     long_elem = cn_elem.find('longTitle')
     if short_elem is not None and short_elem.text and short_elem.text.strip():
@@ -132,13 +139,21 @@ def _extract_node_fields(cn_elem) -> Tuple[str, str, Dict]:
 
     # Je nach OLAT-Version/Bausteinklasse heißt das Beschreibungsfeld
     # 'learningObjectives' ODER 'description' (unterschiedliche
-    # CourseNode-Klassen, gleiche Bedeutung) - beide prüfen.
+    # CourseNode-Klassen, gleiche Bedeutung) – beide prüfen.
     description = ""
     for desc_tag in ('learningObjectives', 'description'):
         desc_elem = cn_elem.find(desc_tag)
         if desc_elem is not None and desc_elem.text and desc_elem.text.strip():
             description = desc_elem.text.strip()
             break
+
+    # OLAT kann einen Baustein hinter ein Passwort legen; die Bedingung gilt
+    # für den ganzen Teilbaum darunter (_walk_tree vererbt sie entsprechend).
+    # Gesetzt ist sie nur, wenn unter der PasswordCondition auch wirklich ein
+    # <password> mit Inhalt steht – das Bedingungs-Element selbst schreibt
+    # OLAT für JEDEN Knoten mit, auch für ungeschützte.
+    password_elem = cn_elem.find(f'./additionalConditions/{PASSWORD_CONDITION_CLASS}/password')
+    defines_password = password_elem is not None and bool((password_elem.text or '').strip())
 
     return title, node_type, {
         'html_file': html_file,
@@ -147,37 +162,46 @@ def _extract_node_fields(cn_elem) -> Tuple[str, str, Dict]:
         'repo_softkey': repo_softkey,
         'qti_type': qti_type,
         'description': description,
+        'defines_password': defines_password,
     }
 
 
 def _walk_tree(tree_elem, st_chain: List[str], nodes: List[Dict], deleted_nodes: List[Dict],
-              flattened: bool = False):
+              flattened: bool = False, password_protected: bool = False):
     """Durchläuft die editortreemodel.xml rekursiv über die echte <children>-
     Verschachtelung (st_chain = Idents der umschließenden STCourseNode-Knoten,
     äußerster zuerst, auf MAX_SECTION_DEPTH gedeckelt).
 
     Ein flacher root.iter()-Durchlauf würde nur die Dokumentreihenfolge
     kennen, aber nicht wissen, welcher Baustein innerhalb welches
-    Struktur-Knotens liegt - die echte Verschachtelung ist hier deshalb
-    nötig. Jeder Knoten bekommt 'parent_st_idents' mit - main.py nutzt das,
+    Struktur-Knotens liegt – die echte Verschachtelung ist hier deshalb
+    nötig. Jeder Knoten bekommt 'parent_st_idents' mit – main.py nutzt das,
     um OLATs Abschnitts-Verschachtelung als Moodle-Abschnitt/Unterabschnitt
     abzubilden, statt jede STCourseNode blind als weiteren flachen
     Abschnitt zu behandeln.
 
     flattened=True bedeutet: irgendein Vorfahre dieses Knotens war bereits
     ein zu tief verschachtelter Container-Knoten (siehe MAX_SECTION_DEPTH
-    unten) - main.py markiert solche Knoten im Kurs sichtbar (ℹ️), damit
+    unten) – main.py markiert solche Knoten im Kurs sichtbar (ℹ️), damit
     klar bleibt, dass sie ursprünglich zu einem jetzt "hochgezogenen"
     Abschnitt gehörten. Bleibt für den ganzen Teilbaum True, sobald einmal
-    gesetzt - auch mehrfach verschachtelte zu tiefe Abschnitte "vererben" es.
+    gesetzt – auch mehrfach verschachtelte zu tiefe Abschnitte "vererben" es.
 
     Eine neue Ebene öffnet nicht nur 'st' (reiner Struktur-Container ohne
     eigenen Inhalt), sondern jeder Knotentyp mit echten Kind-Elementen im
-    <children>-Element der rohen XML - so kann z.B. eine Einzelseite (sp)
+    <children>-Element der rohen XML – so kann z.B. eine Einzelseite (sp)
     mit angehängtem Forum im Baum als aufklappbarer Elternknoten erscheinen.
     'has_children' wird pro Knoten mit rausgegeben, main.py braucht das, um
     zu wissen, ob ein Knoten (zusätzlich zu seiner eigenen Aktivität) auch
     einen Unterabschnitt für seine Kinder aufmacht.
+
+    password_protected=True bedeutet: dieser Knoten selbst oder einer seiner
+    Vorfahren lag in OLAT hinter einem Passwort. Wie flattened bleibt das für
+    den ganzen Teilbaum True, sobald es einmal gesetzt ist – OLATs
+    Passwort-Bedingung gilt ebenso für alle untergeordneten Bausteine.
+    'defines_password' unterscheidet davon den Knoten, der das Passwort
+    tatsächlich gesetzt hat: dort steht der Warnhinweis, die übrigen bekommen
+    nur die Titel-Markierung (siehe main.py).
     """
     cn = None
     for child in tree_elem:
@@ -187,6 +211,7 @@ def _walk_tree(tree_elem, st_chain: List[str], nodes: List[Dict], deleted_nodes:
 
     next_chain = st_chain
     next_flattened = flattened
+    next_password_protected = password_protected
     if cn is not None:
         ident_elem = cn.find('ident')
         if ident_elem is not None and ident_elem.text:
@@ -196,20 +221,22 @@ def _walk_tree(tree_elem, st_chain: List[str], nodes: List[Dict], deleted_nodes:
 
         title, node_type, fields = _extract_node_fields(cn)
 
-        if title == 'Unbenannt':
-            deleted_nodes.append({'title': title, 'type': node_type, 'reason': 'Element ist unbenannt',
+        if title is None:
+            deleted_nodes.append({'title': 'Unbenannt', 'type': node_type,
+                                   'reason': 'Element ist unbenannt',
                                    'ident': ident, 'parent_st_idents': list(st_chain)})
-        elif node_type in ('members', 'cmembers') or title == 'Liste der Teilnehmer:innen':
+        elif node_type in ('members', 'cmembers'):
             deleted_nodes.append({'title': title, 'type': node_type,
                                    'reason': 'Teilnehmerliste wird nicht übernommen',
                                    'ident': ident, 'parent_st_idents': list(st_chain)})
         else:
             # OLAT schreibt für JEDEN Knoten ein <children>-Element, auch
             # ohne echte Kinder (dann als leeres Self-Closing-Tag
-            # '<children/>') - find() findet das Tag so oder so, deshalb
+            # '<children/>') – find() findet das Tag so oder so, deshalb
             # zusätzlich prüfen, ob wirklich Kind-Elemente drinstehen.
             children_tag = tree_elem.find('children')
             has_children = children_tag is not None and len(children_tag) > 0
+            next_password_protected = password_protected or fields['defines_password']
             nodes.append({
                 'title': title,
                 'type': node_type,
@@ -217,6 +244,7 @@ def _walk_tree(tree_elem, st_chain: List[str], nodes: List[Dict], deleted_nodes:
                 'parent_st_idents': list(st_chain),
                 'flattened': flattened,
                 'has_children': has_children,
+                'password_protected': next_password_protected,
                 **fields,
             })
             if has_children:
@@ -228,7 +256,8 @@ def _walk_tree(tree_elem, st_chain: List[str], nodes: List[Dict], deleted_nodes:
     children_elem = tree_elem.find('children')
     if children_elem is not None:
         for child_wrapper in children_elem:
-            _walk_tree(child_wrapper, next_chain, nodes, deleted_nodes, next_flattened)
+            _walk_tree(child_wrapper, next_chain, nodes, deleted_nodes, next_flattened,
+                       next_password_protected)
 
 
 def parse_olat_export(olat_zip_path: str) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
@@ -237,29 +266,34 @@ def parse_olat_export(olat_zip_path: str) -> Tuple[List[Dict[str, str]], List[Di
     Sucht die editortreemodel.xml im ZIP, entfernt XML-Namespaces und
     durchläuft den Baum rekursiv ab rootNode/children (siehe _walk_tree).
     repo_softkey/qti_type sind nur bei Test-Bausteinen (iqtest/iqself)
-    gesetzt - die eigentliche Paketauflösung (auch für cp/Content-Package)
+    gesetzt – die eigentliche Paketauflösung (auch für cp/Content-Package)
     läuft aber über 'ident' und manifest.resolve_repo_package(), nicht über
     repo_softkey. parent_st_idents sind leer, wenn ein Knoten direkt unter
     dem Kurswurzelknoten liegt.
 
-    Unbenannte Knoten und die OLAT-Teilnehmerliste (Typ 'members', auch
+    Knoten ohne Titel und die OLAT-Teilnehmerliste (Typ 'members', auch
     'cmembers') werden als 'verworfener Knoten' mit Grund zurückgegeben,
     damit main.py sie im Systemprotokoll sichtbar machen kann statt sie
-    stillschweigend zu verschlucken.
+    stillschweigend zu verschlucken. Die Erkennung läuft allein über den
+    Bausteintyp – ein Abgleich gegen den angezeigten Namen würde einen
+    gleichnamigen, inhaltlich anderen Baustein mitverwerfen.
     """
     nodes = []
     deleted_nodes = []
 
     if not os.path.exists(olat_zip_path):
-        print(f"[Fehler] Datei {olat_zip_path} existiert nicht.")
+        print(f"[FEHLER] Datei {olat_zip_path} existiert nicht.")
         return nodes, deleted_nodes
 
     try:
         with zipfile.ZipFile(olat_zip_path, 'r') as zip_ref:
-            tree_files = [f for f in zip_ref.namelist() if f.endswith('editortreemodel.xml')]
+            tree_files = [entry_name for entry_name in zip_ref.namelist() if entry_name.endswith('editortreemodel.xml')]
+            if len(tree_files) > 1:
+                print(f"[!] {len(tree_files)} Kursstruktur-Dateien im Export gefunden – "
+                      f"verwendet wird '{tree_files[0]}'.")
             if tree_files:
-                with zip_ref.open(tree_files[0]) as f:
-                    tree = etree.parse(f)
+                with zip_ref.open(tree_files[0]) as handle:
+                    tree = etree.parse(handle)
                     root = tree.getroot()
                     for elem in root.iter():
                         if '}' in elem.tag:
@@ -271,6 +305,6 @@ def parse_olat_export(olat_zip_path: str) -> Tuple[List[Dict[str, str]], List[Di
                             for child_wrapper in children_elem:
                                 _walk_tree(child_wrapper, [], nodes, deleted_nodes)
     except Exception as e:
-        print(f"[Fehler] Fehler beim Parsen der ZIP: {e}")
+        print(f"[FEHLER] Fehler beim Parsen der ZIP: {e}")
 
     return nodes, deleted_nodes

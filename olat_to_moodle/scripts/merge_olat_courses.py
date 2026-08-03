@@ -1,29 +1,29 @@
-"""Einmalig lokal auszuführen - baut aus mehreren echten OLAT-Kursexporten
+"""Einmalig lokal auszuführen – baut aus mehreren echten OLAT-Kursexporten
 EINEN zusammengeführten Test-Kurs mit möglichst breiter Bausteintyp-Abdeckung,
 gedeckelt auf höchstens MAX_PER_TYPE Instanzen pro OLAT-Bausteintyp (über alle
 Quellkurse hinweg gezählt, nicht pro Kurs).
 
-Nicht Teil der gebauten .exe - reines Entwickler-Testwerkzeug, damit der
+Nicht Teil der gebauten .exe – reines Entwickler-Testwerkzeug, damit der
 Konverter an einem einzigen Kurs mit vielen verschiedenen Bausteinen getestet
 werden kann statt viele einzelne Kurse durchzugehen.
 
 Funktionsweise:
   1. Nutzt olat_parser.parse_olat_export() (denselben Parser wie der
      Konverter selbst) auf jedem Quell-ZIP, um Titel/Typ/Ident jedes Knotens
-     zu bekommen - Struktur-Knoten ('st') zählen nicht mit, nur echte
+     zu bekommen – Struktur-Knoten ('st') zählen nicht mit, nur echte
      Bausteine.
   2. Wählt Knoten aus, bis MAX_PER_TYPE pro Typ erreicht ist (erster Kurs
      zuerst, Baumreihenfolge innerhalb eines Kurses).
   3. Baut einen neuen editortreemodel.xml-Baum: ein 'st'-Abschnitt pro
      beitragendem Quellkurs, benannt nach dem Kurs, mit dessen ausgewählten
-     Knoten als direkte Kinder (bewusst flach - keine Mehrfachverschachtelung
+     Knoten als direkte Kinder (bewusst flach – keine Mehrfachverschachtelung
      nötig, das würde nur unnötig gegen MAX_SECTION_DEPTH laufen).
   4. Kopiert export/<ident>/ je ausgewähltem Knoten unverändert (Idents sind
-     über alle Quellkurse hinweg eindeutig - geprüft, keine Kollision).
+     über alle Quellkurse hinweg eindeutig – geprüft, keine Kollision).
   5. oocoursefolder.zip bleibt bewusst LEER (siehe Einschränkung unten).
 
 Bekannte Einschränkung: Der gemeinsame Kursordner (oocoursefolder.zip) wird
-NICHT übernommen - eine vollständige Zusammenführung je Kurs mit
+NICHT übernommen – eine vollständige Zusammenführung je Kurs mit
 Ordnerpräfix würde die Ausgabe auf mehrere hundert MB aufblähen (u.a.
 große PDFs aus Kursen, deren übriger Inhalt gar nicht ausgewählt wurde)
 und wäre trotzdem nur teilweise korrekt (Inline-Verweise auf coursefolder-
@@ -50,7 +50,7 @@ OUTPUT_ZIP = os.path.join(os.path.dirname(__file__), '..', '..', 'merged_test_ku
 MAX_PER_TYPE = 2
 
 # Bekannte Sonderfälle ohne editortreemodel.xml (eigenständige Testpakete /
-# reines CP-Paket) - werden übersprungen, siehe Modul-Docstring.
+# reines CP-Paket) – werden übersprungen, siehe Modul-Docstring.
 _SKIP_FILES = {"BeispielTest.zip", "BeispielTest (1).zip", "alle_testfragen.zip", "CP.zip"}
 
 
@@ -80,7 +80,7 @@ def _find_node_element(tree_root, ident: str):
 
 def _make_wrapper_node(ident: str, title: str) -> ET.Element:
     """Baut einen minimalen 'st'-Struktur-Knoten (siehe olat_parser
-    ._extract_node_fields - class 'STCourseNode' + longTitle reichen)."""
+    ._extract_node_fields – class 'STCourseNode' + longTitle reichen)."""
     wrapper = ET.Element('org.olat.course.tree.CourseEditorTreeNode')
     ET.SubElement(wrapper, 'ident').text = ident
     ET.SubElement(wrapper, 'accessible').text = 'true'
@@ -167,7 +167,7 @@ def main():
             if node_elem is None:
                 print(f"[!] '{course_name}': Knoten {ident} im Baum nicht wiedergefunden - übersprungen.")
                 continue
-            # Eigene Kind-Knoten NICHT mitnehmen - jedes Kind wurde unabhängig
+            # Eigene Kind-Knoten NICHT mitnehmen – jedes Kind wurde unabhängig
             # über die flache nodes-Liste von parse_olat_export bewertet, ein
             # unverändertes Mitschleppen würde die MAX_PER_TYPE-Deckelung umgehen.
             existing_children = node_elem.find('children')
@@ -215,11 +215,11 @@ def main():
         # Bewusst LEER statt voll zusammengeführt: der komplette oocoursefolder.zip
         # jedes beitragenden Kurses würde die Ausgabe auf mehrere hundert MB
         # aufblähen (u.a. große PDFs aus Kursen, deren restlicher Inhalt gar
-        # nicht ausgewählt wurde) - für einen reinen Bausteintyp-Abdeckungstest
+        # nicht ausgewählt wurde) – für einen reinen Bausteintyp-Abdeckungstest
         # unnötiger Ballast.
         # Bekannte Folge: Bausteine, die auf den gemeinsamen Kursordner verweisen
         # (z.B. Ordner-Bausteine 'bc'/'pf', Bilder in HTML-Seiten), zeigen im
-        # Ergebnis leer/fehlend - für den Abdeckungstest selbst unkritisch.
+        # Ergebnis leer/fehlend – für den Abdeckungstest selbst unkritisch.
         import io
         empty_cf = io.BytesIO()
         with zipfile.ZipFile(empty_cf, 'w', zipfile.ZIP_DEFLATED):

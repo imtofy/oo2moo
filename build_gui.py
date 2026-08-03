@@ -3,24 +3,35 @@ ohne dass dafür ein Terminal geöffnet werden muss.
 
 Ruft dafür exakt dasselbe Kommando auf, das auch von Hand in der Konsole
 liefe (PyInstaller). Dieses Skript ist nur eine Oberfläche drumherum, keine
-eigene Build-Logik - die bleibt alleine in OLAT2Moodle.spec.
+eigene Build-Logik – die bleibt alleine in OLAT2Moodle.spec.
 
 Sitzt bewusst eine Ebene über dem Projektordner (statt darin zu liegen).
 Bewusst mitversioniert (siehe .gitignore-Kommentar dazu).
 """
 
+import ctypes
 import queue
 import subprocess
 import sys
 import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 import sv_ttk
 
 THIS_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = THIS_DIR / "olat_to_moodle"
+
+# Farben, Icon und Taskleisten-Kennung aus dem Projekt übernehmen, statt sie
+# hier ein zweites Mal zu pflegen: die Build-Zentrale ist nur zusammen mit
+# diesem Projekt sinnvoll, ein Import ist also ehrlicher als kopierte Werte.
+#
+# Der Import darf NICHT zu den übrigen nach oben: config.py liegt in
+# olat_to_moodle/src, und dieses Verzeichnis steht erst nach der folgenden
+# Zeile auf dem Suchpfad. Weiter oben scheitert er mit ModuleNotFoundError.
+sys.path.insert(0, str(PROJECT_DIR / "src"))
+from config import APP_MODEL_ID, ICON_PATH, LOG_COLORS  # noqa: E402
 
 _BUILD = {
     "label": "Bauen",
@@ -28,12 +39,6 @@ _BUILD = {
     "cmd": [sys.executable, "-m", "PyInstaller", "OLAT2Moodle.spec", "--noconfirm"],
     "exe": PROJECT_DIR / "dist" / "Olat_to_Moodle.exe",
 }
-
-_LOG_COLORS = {
-    "dark": {"bg": "#1c1c1c", "fg": "#e0e0e0", "insertbackground": "#e0e0e0"},
-    "light": {"bg": "#ffffff", "fg": "#1a1a1a", "insertbackground": "#1a1a1a"},
-}
-
 
 class BuildLauncherApp:
     """Hauptfenster: ein Build-Button + Log-Fenster.
@@ -51,10 +56,40 @@ class BuildLauncherApp:
 
         self._build_running = False
         self._button = None
+        # Der laufende PyInstaller-Prozess. Er ist ein eigener Prozess und
+        # überlebt das Fenster, wenn er nicht ausdrücklich beendet wird -
+        # ein Daemon-Thread reicht dafür nicht, der beendet nur sich selbst.
+        self._process = None
+        root.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self._build_widgets()
         self._apply_log_colors()
         self._poll_log_queue()
+
+    def _on_close(self):
+        """Beendet einen noch laufenden Build, bevor das Fenster zugeht -
+        sonst schreibt PyInstaller ohne sichtbares Fenster weiter in dist/
+        und die halbfertige .exe sähe aus wie eine fertige."""
+        if self._build_running and self._process is not None:
+            if not messagebox.askyesno(
+                    "Build läuft noch",
+                    "Der Build ist noch nicht fertig. Jetzt abbrechen?\n\n"
+                    "Die .exe in dist/ bleibt dann auf dem vorherigen Stand "
+                    "oder ist unvollständig."):
+                return
+            self._terminate_process()
+        self.root.destroy()
+
+    def _terminate_process(self):
+        """Beendet den Build-Prozess und wartet kurz auf ihn; reagiert er
+        nicht, wird er hart abgeschossen."""
+        try:
+            self._process.terminate()
+            self._process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            self._process.kill()
+        except OSError:
+            pass
 
     def _build_widgets(self):
         outer = ttk.Frame(self.root, padding=16)
@@ -99,7 +134,7 @@ class BuildLauncherApp:
     def _apply_log_colors(self):
         """Färbt das Log-Fenster passend zum aktuellen sv_ttk-Theme ein
         (tk.Text ist kein ttk-Widget, sv_ttk stylt es nicht automatisch)."""
-        colors = _LOG_COLORS[sv_ttk.get_theme()]
+        colors = LOG_COLORS[sv_ttk.get_theme()]
         self.log_widget.configure(**colors)
 
     def _toggle_theme(self):
@@ -131,6 +166,7 @@ class BuildLauncherApp:
             process = subprocess.Popen(
                 _BUILD["cmd"], cwd=_BUILD["cwd"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace", bufsize=1)
+            self._process = process
             for line in process.stdout:
                 self.log_queue.put(line)
             return_code = process.wait()
@@ -142,7 +178,15 @@ class BuildLauncherApp:
         except Exception as exc:
             self.log_queue.put(f"\n[FEHLER] {exc}\n")
         finally:
+            self._process = None
             self.log_queue.put("__DONE__")
+
+    def _append_log(self, text: str):
+        """Hängt Ausgabe unverändert ans Protokoll an."""
+        self.log_widget.config(state="normal")
+        self.log_widget.insert(tk.END, text)
+        self.log_widget.see(tk.END)
+        self.log_widget.config(state="disabled")
 
     def _clear_log(self):
         self.log_widget.config(state="normal")
@@ -158,18 +202,37 @@ class BuildLauncherApp:
                     self._button.config(state="normal")
                     self.progress.stop()
                     continue
-                self.log_widget.config(state="normal")
-                self.log_widget.insert(tk.END, text)
-                self.log_widget.see(tk.END)
-                self.log_widget.config(state="disabled")
+                self._append_log(text)
         except queue.Empty:
             pass
         self.root.after(100, self._poll_log_queue)
 
 
 def main():
+    # Beides muss vor der ersten Fenster-Erzeugung passieren: ohne
+    # DPI-Awareness skaliert Windows das Fenster bei Anzeige-Skalierung über
+    # 100% nachträglich als Bitmap hoch (unscharfe Schrift), und ohne eigene
+    # AppUserModelID ordnet die Taskleiste das Fenster dem Host-Prozess zu
+    # und zeigt dessen python.exe-Icon.
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except (AttributeError, OSError):
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except (AttributeError, OSError):
+            pass
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(f"{APP_MODEL_ID}.build")
+    except (AttributeError, OSError):
+        pass
+
     log_queue = queue.Queue()
     root = tk.Tk()
+    try:
+        root.iconbitmap(default=ICON_PATH)
+    except tk.TclError:
+        # Fehlendes Icon ist kein Grund, das Build-Tool nicht zu starten.
+        pass
     sv_ttk.set_theme("dark")
     BuildLauncherApp(root, log_queue)
     root.mainloop()

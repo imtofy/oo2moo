@@ -5,7 +5,7 @@ Top-Level-Section oder Subsection öffnet (siehe main.py, das pro Knoten
 entscheidet, WELCHE der drei Methoden hier zutrifft).
 
 Modul-/Kontext-IDs für Subsection-Aktivitäten werden bewusst NICHT hier
-vergeben, sondern von main.py übergeben - die teilen sich denselben
+vergeben, sondern von main.py übergeben – die teilen sich denselben
 Nummernkreis wie alle anderen Aktivitäten im Kurslauf (next_free_module_id/
 context_id_counter dort), eine eigene Zählung hier würde Kollisionen riskieren.
 """
@@ -13,14 +13,14 @@ context_id_counter dort), eine eigene Zählung hier würde Kollisionen riskieren
 import os
 import shutil
 
-from conversion.file_manager import write_xml
+from conversion.file_manager import write_activity_context
 from conversion.moodle_xml import modify_module_xml, modify_subsection_xml
 from config import UNGROUPED_SECTION_MARKER, UNGROUPED_SECTION_TITLE
 
 
 class SectionBuilder:
     """Hält den gesamten Section-State EINES Kurslaufs (nicht wiederverwendbar
-    über mehrere Läufe hinweg - main.py legt pro Aufruf von
+    über mehrere Läufe hinweg – main.py legt pro Aufruf von
     convert_olat_to_moodle() eine neue Instanz an)."""
 
     def __init__(self, temp_dir: str, template_mapping: dict, now: int):
@@ -37,22 +37,21 @@ class SectionBuilder:
         # bekommt so Nummer 0 (Moodles zwingend vorhandene, nicht löschbare
         # "Allgemeines"-Section) statt dass Moodle beim Restore mangels
         # gelieferter Section 0 selbst eine leere "Allgemeines"-Section
-        # ergänzt - das erzeugt sonst einen leeren, unlöschbaren Wrapper
+        # ergänzt – das erzeugt sonst einen leeren, unlöschbaren Wrapper
         # zusätzlich zu unserer ersten echten Section.
         self.next_section_id = -1
 
         # Eigener, weit entfernter Nummernkreis für Unterabschnitte (Moodle-
-        # course_sections.section, das <number> in section.xml) - getrennt vom
+        # course_sections.section, das <number> in section.xml) – getrennt vom
         # Nummernkreis der normalen Abschnitte oben. Grund: Moodles eigenes
         # Restore verschiebt JEDEN Unterabschnitt beim Wiederherstellen ohnehin
         # ans Ende der Abschnitts-Reihenfolge (restore_section_structure_step::
         # process_section() in Moodle-Core setzt section->section komplett neu,
-        # unsere <number> wird für Unterabschnitte also nie übernommen) - liegt
+        # unsere <number> wird für Unterabschnitte also nie übernommen) – liegt
         # eine Unterabschnitts-Nummer aber ZWISCHEN zwei normalen Abschnitten
         # (z.B. Abschnitt 5, Unterabschnitt 6, Abschnitt 7), reißt das Verschieben
         # eine Lücke in die normale Abschnittsfolge, die Moodle danach mit
-        # leeren "Neuer Abschnitt"-Plätzen auffüllt - genau die Lücken, die wir
-        # in echten Kursen gesehen haben. Mit einem eigenen, weit über der
+        # leeren "Neuer Abschnitt"-Plätzen auffüllt. Mit einem eigenen, weit über der
         # normalen Abschnittszahl liegenden Nummernkreis für Unterabschnitte
         # bleibt die normale Abschnittsfolge lückenlos, egal wie viele
         # Unterabschnitte dazwischen "eigentlich" lägen.
@@ -91,19 +90,24 @@ class SectionBuilder:
         target = self.st_section_map.get(parent_st_idents[-1])
         return target if target is not None else self._get_or_create_current_bucket()
 
-    def open_top_section(self, node: dict) -> int:
+    def open_top_section(self, node: dict, node_title: str = "") -> int:
         """Öffnet eine neue echte Top-Level-Section für einen Top-Level-
         Struktur-Knoten (jeder 'st'-Knoten ohne parent_st_idents, auch ganz
         ohne Kinder). Setzt den aktuellen Sammel-Bucket zurück, damit lose
         Bausteine danach in einer frischen, neu nummerierten Sammlung landen.
 
-        Befüllt NICHT die Beschreibung (summary) - das braucht main.py's
+        node_title ist der bereits um Markierungen ergänzte Titel (siehe
+        main.py) – wie bei open_subsection() explizit übergeben, weil
+        node['title'] den rohen Titel ohne Markierungen enthält.
+
+        Befüllt NICHT die Beschreibung (summary) – das braucht main.py's
         eigene build_node_content()/file_mgr-Aufrufe (Bild-Anhänge etc.),
         siehe set_section_summary()."""
         self.next_section_id += 1
         new_section_id = self.next_section_id
         self.sections[new_section_id] = {
-            "id": new_section_id, "title": node.get('title', f'Abschnitt {new_section_id}'),
+            "id": new_section_id,
+            "title": node_title or node.get('title', f'Abschnitt {new_section_id}'),
             "module_ids": [], "component": None, "itemid": None,
             "parentcmid": None, "modname": None, "summary": "",
         }
@@ -113,25 +117,25 @@ class SectionBuilder:
 
     def set_section_summary(self, section_id: int, summary_html: str) -> None:
         """Trägt die (separat aufbereitete) Beschreibung eines Top-Level-
-        Struktur-Knotens in dessen Section ein - siehe open_top_section()."""
+        Struktur-Knotens in dessen Section ein – siehe open_top_section()."""
         self.sections[section_id]["summary"] = summary_html
 
     def open_subsection(self, node: dict, node_title: str, olat_type: str,
                         parent_st_idents, subsection_module_id: int, context_id: int):
         """Öffnet eine neue Moodle-Subsection (mod_subsection, Core seit
-        Moodle 4.4) - sowohl für echtes st-in-st als auch für einen
+        Moodle 4.4) – sowohl für echtes st-in-st als auch für einen
         has_children-Knoten ohne eigenen Struktur-Typ (z.B. eine Einzelseite
         mit echten Unterseiten). Die Aktivität selbst liegt im
         umschließenden Abschnitt, der neue Abschnitt ist über
         component/itemid mit ihr verknüpft (siehe xml_generator.
-        generate_section_xml) - technisch bleiben alle Abschnitte eine
+        generate_section_xml) – technisch bleiben alle Abschnitte eine
         flache Liste, Moodle zeigt sie nur optisch eingerückt an.
 
         subsection_module_id/context_id kommen von main.py (gemeinsamer
         Nummernkreis mit allen anderen Aktivitäten, siehe Moduldocstring).
 
         Gibt (neue section_id, Elternabschnitt-section_id, Subsection-Titel)
-        zurück - main.py braucht alle drei für processed_activities/
+        zurück – main.py braucht alle drei für processed_activities/
         current_target_section_id."""
         self.next_subsection_id += 1
         new_section_id = self.next_subsection_id
@@ -150,7 +154,7 @@ class SectionBuilder:
             section_display_title = node.get('title', f'Unterabschnitt {new_section_id}')
         else:
             # has_children-Knoten OHNE eigenen Struktur-Typ (z.B. eine
-            # Einzelseite mit echten Unterseiten) - "UNTERABSCHNITT: "
+            # Einzelseite mit echten Unterseiten) – "UNTERABSCHNITT: "
             # macht sichtbar, dass diese Subsection technisch erzeugt
             # wurde und keine vom Kursautor angelegte Struktur ist.
             subsection_title = f'UNTERABSCHNITT: "{node_title}"'
@@ -163,10 +167,7 @@ class SectionBuilder:
         modify_subsection_xml(os.path.join(sub_a_path, "subsection.xml"),
                               self.subsection_instance_counter, subsection_module_id,
                               context_id, subsection_title, self.now)
-        os.makedirs(os.path.join(self.temp_dir, "contexts", f"context_{context_id}"), exist_ok=True)
-        write_xml(os.path.join(self.temp_dir, "contexts", f"context_{context_id}", "context.xml"),
-                  f'<context id="{context_id}" contextlevel="70" '
-                  f'instanceid="{subsection_module_id}"></context>')
+        write_activity_context(self.temp_dir, context_id, subsection_module_id)
 
         self.sections[new_section_id] = {
             "id": new_section_id, "title": section_display_title,
@@ -184,13 +185,13 @@ class SectionBuilder:
 
     def create_section(self, title: str) -> int:
         """Öffnet eine schlichte, inhaltsleere Top-Level-Section mit
-        gegebenem Titel - für main.py's Systemprotokoll-Abschnitt am Ende
+        gegebenem Titel – für main.py's Systemprotokoll-Abschnitt am Ende
         des Kurslaufs, der an keinem OLAT-Knoten hängt."""
         self.next_section_id += 1
         section_id = self.next_section_id
         self.sections[section_id] = {
             "id": section_id, "title": title,
             "module_ids": [], "component": None, "itemid": None,
-            "parentcmid": None, "modname": None,
+            "parentcmid": None, "modname": None, "summary": "",
         }
         return section_id

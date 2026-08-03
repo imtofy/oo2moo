@@ -1,4 +1,4 @@
-"""Tests für sanitize_for_moodle() - der zentrale HTML-Bereinigungsschritt,
+"""Tests für sanitize_for_moodle() – der zentrale HTML-Bereinigungsschritt,
 den jeder Bausteininhalt vor der Übernahme nach Moodle durchläuft."""
 
 from conversion.html_cleaner import sanitize_for_moodle
@@ -54,7 +54,7 @@ def test_auth_path_link_removed_but_text_kept():
 
 
 def test_absolute_url_containing_login_substring_is_not_removed():
-    # Nur root-relative /login/-Pfade gelten als toter OLAT-Server-Link -
+    # Nur root-relative /login/-Pfade gelten als toter OLAT-Server-Link –
     # eine echte externe URL mit '/login/' im Pfad darf nicht kaputtgehen.
     html, _, removed = sanitize_for_moodle(
         '<a href="https://fremde-uni.de/login/hilfe">Hilfe</a>')
@@ -94,7 +94,7 @@ def test_iframe_referencing_olat_repository_entry_is_replaced_with_warning():
 
 
 def test_iframe_to_external_video_platform_stays_untouched():
-    # YouTube/Vimeo/... - jede beliebige externe Videoseite lässt sich per
+    # YouTube/Vimeo/... – jede beliebige externe Videoseite lässt sich per
     # iframe einbetten, nur OLATs eigenes RepositoryEntry/CourseNode-Schema
     # darf als "verweist auf die alte Quelle" erkannt werden.
     src = 'https://beispiel-videoplattform.invalid/embed/12345'
@@ -104,7 +104,7 @@ def test_iframe_to_external_video_platform_stays_untouched():
 
 
 def test_own_generated_pdf_embed_iframe_stays_untouched():
-    # @@PLUGINFILE@@-Verweise haben keinen Host (kein echtes href) - der
+    # @@PLUGINFILE@@-Verweise haben keinen Host (kein echtes href) – der
     # eigene PDF-Inline-iframe (node_processor._auto_embed) darf davon nicht
     # betroffen sein.
     html, _, removed = sanitize_for_moodle(

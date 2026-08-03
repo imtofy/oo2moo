@@ -2,23 +2,22 @@
 einem OLAT-wiki-Baustein.
 
 Ein wiki-CourseNode referenziert sein Wiki-Paket über 'export/<ident>/
-repo.zip', aufgelöst über manifest.resolve_repo_package() - derselbe
+repo.zip', aufgelöst über manifest.resolve_repo_package() – derselbe
 Mechanismus wie bei QTI-Testpaketen und CP-Bausteinen. Das Paket enthält
 pro Seite ein '<Base64-Name>.properties'/'.wp'-Dateipaar (Metadaten/Inhalt);
 bearbeitete Seiten haben zusätzlich '._oo_vr_<N>_<Base64-Name>.properties'/
 '.wp'-Paare als Versionshistorie. Die Benennung ist nicht ganz einheitlich
-(mal mit, mal ohne Versions-Suffix am aktuellen Stand) - _pick_current_pages()
+(mal mit, mal ohne Versions-Suffix am aktuellen Stand) – _pick_current_pages()
 nimmt pragmatisch die zuletzt erkennbare Fassung je Seite.
 
-Gegen echten Moodle-Wiki-Export verifiziert (Schema aus Moodles eigenem
-backup_wiki_stepslib.php UND einem echten populierten .mbz): Moodle
-speichert Wiki-Seiten intern selbst als HTML (defaultformat/contentformat
-'html'), OLATs eigene Wiki-Syntax (MediaWiki-artig) wird deshalb über
-wiki_markup.to_html() umgewandelt, nicht 1:1 durchgereicht.
+Moodle speichert Wiki-Seiten intern selbst als HTML (defaultformat/
+contentformat 'html', siehe backup_wiki_stepslib.php) – OLATs eigene
+Wiki-Syntax (MediaWiki-artig) wird deshalb über wiki_markup.to_html()
+umgewandelt, nicht 1:1 durchgereicht.
 
 WICHTIG: Moodles restore_wiki_stepslib.php verarbeitet Seiten/Versionen nur,
 wenn die Aktivitäts-Einstellung '{modname}_{id}_userinfo' auf 1 steht (siehe
-xml_generator.py) - ohne das bliebe jedes noch so vollständige wiki.xml von
+xml_generator.py) – ohne das bliebe jedes noch so vollständige wiki.xml von
 Moodle unbeachtet. userid bleibt hier trotzdem überall 0 (kein echter OLAT-
 Autor wird übernommen, siehe _page_xml)."""
 
@@ -26,18 +25,22 @@ import html as html_lib
 import re
 from typing import Dict, Optional, TypedDict
 
+from .file_manager import activity_title, escape_xml_text
 from .wiki_markup import to_html
 
-# Historische Versionsstände tragen dieses Präfix vor dem Base64-Seitennamen -
+# Historische Versionsstände tragen dieses Präfix vor dem Base64-Seitennamen –
 # nur der unpräfixierte Dateiname kann der aktuelle Stand sein.
 _VERSION_HISTORY_PREFIX = '._oo_vr_'
 
 # '<Base64Name>.wp' oder '<Base64Name>.wp-<Zahl>' (beide Formen kommen als
-# jeweils "aktueller" Stand vor, siehe Moduldocstring) - ebenso für .properties.
+# jeweils "aktueller" Stand vor, siehe Moduldocstring) – ebenso für .properties.
 _PAGE_FILE = re.compile(r'^(?P<key>.+?)\.(?P<kind>wp|properties)(?:-(?P<num>\d+))?$')
 
 
 class WikiActivityResult(TypedDict):
+    """Rückgabeform von build_wiki_activity() bei Erfolg – als TypedDict
+    statt eines nackten Dict, damit main.py beim Zugriff auf die einzelnen
+    Schlüssel keine falschen None-Typwarnungen bekommt."""
     wiki_xml: str
 
 
@@ -47,7 +50,7 @@ def _basename(path: str) -> str:
 
 def _parse_properties(data: bytes) -> Dict[str, str]:
     """Parst eine Java-.properties-Datei (key=value, '#' leitet Kommentarzeilen
-    ein) in ein Dict - Moodles eigene Escape-Konventionen (z.B. '\\:') kommen
+    ein) in ein Dict – Moodles eigene Escape-Konventionen (z.B. '\\:') kommen
     in den hier relevanten Feldern (Titel, Zeitstempel) nicht vor, deshalb
     bewusst kein vollständiger Properties-Parser."""
     result = {}
@@ -63,7 +66,7 @@ def _parse_properties(data: bytes) -> Dict[str, str]:
 
 def _pick_current_pages(sub_vfs: Dict[str, bytes]) -> Dict[str, Dict[str, bytes]]:
     """Gruppiert die Dateien im Wiki-Paket-VFS je Seite (Base64-Schlüssel) und
-    wählt pro Seite die zuletzt erkennbare .wp/.properties-Fassung - eine
+    wählt pro Seite die zuletzt erkennbare .wp/.properties-Fassung – eine
     fehlende Versionsnummer (bloßes '<Name>.wp') zählt dabei als NEUER als
     jede nummerierte Fassung, siehe Moduldocstring."""
     best_num: Dict[str, Dict[str, float]] = {}
@@ -83,12 +86,12 @@ def _pick_current_pages(sub_vfs: Dict[str, bytes]) -> Dict[str, Dict[str, bytes]
             best_num[key][kind] = rank
             chosen.setdefault(key, {})[kind] = data
 
-    return {k: v for k, v in chosen.items() if 'wp' in v}
+    return {page_name: page_data for page_name, page_data in chosen.items() if 'wp' in page_data}
 
 
 def _decode_page_title(key: str, properties: Dict[str, str]) -> str:
     """Nimmt bevorzugt 'pagename' aus den Properties (Original-Schreibweise
-    inkl. Sonderzeichen) - der Base64-Schlüssel selbst ist nur der
+    inkl. Sonderzeichen) – der Base64-Schlüssel selbst ist nur der
     URL-sichere Dateiname und kann bei Sonderzeichen abweichen."""
     return properties.get('pagename') or key
 
@@ -109,10 +112,10 @@ def build_wiki_activity(node, manifest, context_id: int, module_id: int,
     """Baut eine vollständige Wiki-Aktivität mit echten Seiten aus einem
     OLAT-wiki-Knoten. Jede Seite bekommt genau eine Version (den aktuellen
     Stand) statt OLATs vollständiger, uneinheitlich benannter
-    Versionshistorie - siehe Moduldocstring.
+    Versionshistorie – siehe Moduldocstring.
 
     Bricht mit None ab, wenn das Paket nicht auflösbar ist oder keine Seiten
-    gefunden werden - main.py fällt dann auf die generische, leere Wiki-
+    gefunden werden – main.py fällt dann auf die generische, leere Wiki-
     Aktivität zurück statt den Kurslauf abzubrechen.
     """
     sub_vfs = manifest.resolve_repo_package(node.get('ident'), 'WIKI', 'Wiki-Paket', node.get('title'))
@@ -123,7 +126,7 @@ def build_wiki_activity(node, manifest, context_id: int, module_id: int,
     if not pages_by_key:
         return None
 
-    safe_name = html_lib.escape(str(node.get('title') or 'Wiki'))
+    safe_name = escape_xml_text(activity_title(node, 'Wiki'))
     page_xmls = []
     first_page_title = None
     page_id = 0
@@ -132,12 +135,11 @@ def build_wiki_activity(node, manifest, context_id: int, module_id: int,
     for key, files in pages_by_key.items():
         properties = _parse_properties(files['properties']) if 'properties' in files else {}
         title = _decode_page_title(key, properties)
+        # 'SW5kZXg=' ist OLATs Base64-Kodierung von 'Index' – OLATs eigene
+        # Startseiten-Konvention, deckt sich meist mit Moodles
+        # 'firstpagetitle'. Sonst bleibt es bei der ERSTEN gefundenen Seite.
         if first_page_title is None or key == 'SW5kZXg=':
-            # 'SW5kZXg=' ist OLATs Base64-Kodierung von 'Index' - OLATs
-            # eigene Startseiten-Konvention, deckt sich meist mit Moodles
-            # 'firstpagetitle'. Sonst bleibt es bei der ERSTEN gefundenen Seite.
-            if key == 'SW5kZXg=' or first_page_title is None:
-                first_page_title = title
+            first_page_title = title
 
         wikitext = files['wp'].decode('utf-8', errors='replace')
         content_html = to_html(wikitext)
@@ -147,7 +149,7 @@ def build_wiki_activity(node, manifest, context_id: int, module_id: int,
 
         page_id += 1
         version_id += 1
-        safe_title = html_lib.escape(title)
+        safe_title = escape_xml_text(title)
         safe_content = html_lib.escape(content_html, quote=False)
         page_xmls.append(f"""      <page id="{page_id}">
         <title>{safe_title}</title>
@@ -171,7 +173,7 @@ def build_wiki_activity(node, manifest, context_id: int, module_id: int,
         </tags>
       </page>""")
 
-    safe_first_page = html_lib.escape(first_page_title or 'Index')
+    safe_first_page = escape_xml_text(first_page_title or 'Index')
     pages_xml = "\n".join(page_xmls)
     wiki_xml = f"""<activity id="{module_id}" moduleid="{module_id}" modulename="wiki" contextid="{context_id}">
   <wiki id="{module_id}">

@@ -1,5 +1,5 @@
-"""Tests für block_builder.py - Schema gegen einen echten Moodle-5.2-Export
-verifiziert (Kurs mit manuell hinzugefügtem Kalender-Block, wieder exportiert)."""
+"""Tests für block_builder.py – Schema folgt einem echten Moodle-5.2-Export
+eines Kurses mit Kalender-Block."""
 
 import xml.etree.ElementTree as ET
 

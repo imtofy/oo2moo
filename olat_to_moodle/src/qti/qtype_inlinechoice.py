@@ -10,11 +10,10 @@ per HTML-Escaping.
 """
 
 import re
-import html as html_lib
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional, Tuple
 
-from .helpers import (element_inner_html, process_html_and_images, strip_tags, escape_cloze_text,
+from .helpers import (answer_xml, element_inner_html, process_html_and_images, strip_tags, escape_cloze_text,
                       warn_dropped_files, build_question_element, wrap_question_bank_entry,
                       extract_cloze_tokens, replace_cloze_tokens_with_placeholders)
 
@@ -58,7 +57,7 @@ def parse_inlinechoice(root: ET.Element, vfs: Dict[str, bytes]) -> Optional[Dict
     raw_body_html = element_inner_html(item_body)
     blank_index = {'i': 0}
 
-    def replacer(_match):
+    def _replace_blank_with_token(_match):
         """Ersetzt eine inlineChoice-Lücke durch ihr MULTICHOICE-Cloze-Token."""
         i = blank_index['i']
         blank_index['i'] += 1
@@ -73,10 +72,13 @@ def parse_inlinechoice(root: ET.Element, vfs: Dict[str, bytes]) -> Optional[Dict
         joined = '~'.join(parts)
         return f'{{1:MULTICHOICE:{joined}}}'
 
-    cloze_html = _INLINECHOICE_PATTERN.sub(replacer, raw_body_html)
+    cloze_html = _INLINECHOICE_PATTERN.sub(_replace_blank_with_token, raw_body_html)
     question_text, text_files = process_html_and_images(cloze_html, vfs)
 
     return {
+        # 'cloze_dropdown' steht nicht in GENERATORS, sondern in
+        # MULTI_ENTRY_GENERATORS (qti_pipeline.py) – eine Dropdown-Luecke
+        # erzeugt wie Cloze mehrere question_bank_entries auf einmal.
         'qtype': 'cloze_dropdown',
         'title': root.get('title', 'Unbenannt'),
         'text': question_text,
@@ -92,13 +94,7 @@ def _build_multichoice_subquestion(sub_qid: int, parent_qid: int, title: str, to
     for opt in blank['options']:
         aid = id_gen.next()
         fraction = "1.0000000" if opt['id'] == blank['correct_id'] else "0.0000000"
-        answer_blocks.append(f"""                    <answer id="{aid}">
-                      <answertext>{html_lib.escape(opt['text'])}</answertext>
-                      <answerformat>1</answerformat>
-                      <fraction>{fraction}</fraction>
-                      <feedback></feedback>
-                      <feedbackformat>1</feedbackformat>
-                    </answer>""")
+        answer_blocks.append(answer_xml(aid, opt['text'], fraction))
     mc_id = id_gen.next()
     plugin_inner = f"""                  <answers>
 {chr(10).join(answer_blocks)}
@@ -121,30 +117,30 @@ def _build_multichoice_subquestion(sub_qid: int, parent_qid: int, title: str, to
                                    parent=parent_qid, penalty="0.0000000")
 
 
-def generate_inlinechoice_entries(q: Dict, id_gen, cat_id: int) -> Tuple[List[str], int]:
+def generate_inlinechoice_entries(question: Dict, id_gen, cat_id: int) -> Tuple[List[str], int]:
     """Analog zu qtype_cloze.generate_cloze_entries, aber jede Lücke ist ein
     MULTICHOICE-Dropdown statt SHORTANSWER/NUMERICAL. Gibt (alle
     question_bank_entry-Blöcke, entry_id der Elternfrage) zurück."""
-    warn_dropped_files(q)
+    warn_dropped_files(question)
 
-    tokens = extract_cloze_tokens(q['text'])
-    parent_text = replace_cloze_tokens_with_placeholders(q['text'])
+    tokens = extract_cloze_tokens(question['text'])
+    parent_text = replace_cloze_tokens_with_placeholders(question['text'])
 
-    if len(tokens) != len(q['blanks']):
-        print(f"[!] '{q['title']}': {len(tokens)} Cloze-Token(s) im Text, aber "
-              f"{len(q['blanks'])} Lücke(n) erkannt – nur die ersten "
-              f"{min(len(tokens), len(q['blanks']))} werden verknüpft, der Rest "
+    if len(tokens) != len(question['blanks']):
+        print(f"[!] '{question['title']}': {len(tokens)} Cloze-Token(s) im Text, aber "
+              f"{len(question['blanks'])} Lücke(n) erkannt – nur die ersten "
+              f"{min(len(tokens), len(question['blanks']))} werden verknüpft, der Rest "
               f"geht verloren (evtl. literale {{n:TYPE:...}}-Syntax im Fragetext?).")
 
     parent_qid = id_gen.next()
     sub_ids: List[int] = []
     sub_entries: List[str] = []
 
-    for token, blank in zip(tokens, q['blanks']):
+    for token, blank in zip(tokens, question['blanks']):
         sub_qid = id_gen.next()
         sub_ids.append(sub_qid)
         sub_question_xml = _build_multichoice_subquestion(
-            sub_qid, parent_qid, q['title'], token, blank, id_gen)
+            sub_qid, parent_qid, question['title'], token, blank, id_gen)
         sub_entry_xml, _sub_entry_id = wrap_question_bank_entry(sub_question_xml, cat_id, id_gen)
         sub_entries.append(sub_entry_xml)
 
@@ -157,7 +153,7 @@ def generate_inlinechoice_entries(q: Dict, id_gen, cat_id: int) -> Tuple[List[st
                     <sequence>{sequence}</sequence>
                   </multianswer>"""
     parent_question_xml = build_question_element(
-        parent_qid, q['title'], parent_text, 'multianswer', parent_plugin_inner,
+        parent_qid, question['title'], parent_text, 'multianswer', parent_plugin_inner,
         parent=0, penalty="0.3333333", defaultmark=f"{len(sub_ids)}.0000000")
     parent_entry_xml, parent_entry_id = wrap_question_bank_entry(parent_question_xml, cat_id, id_gen)
 

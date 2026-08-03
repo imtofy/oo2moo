@@ -1,4 +1,4 @@
-"""Fragetyp Zeichnen - nur Erkennung, kein Generator.
+"""Fragetyp Zeichnen – nur Erkennung, kein Generator.
 
 Kein generate_drawing_xml(), absichtlich: Standard-Moodle hat kein
 Zeichenwerkzeug ohne Drittanbieter-Plugin. Wird darum wie qtype_matrix.py

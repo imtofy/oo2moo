@@ -1,7 +1,7 @@
 """Grafische Oberfläche für den OLAT-zu-Moodle-Konverter.
 
 Ruft main.convert_olat_to_moodle() unverändert auf und leitet dessen
-print()-Ausgaben in ein Log-Fenster um - auch technisch nötig, da
+print()-Ausgaben in ein Log-Fenster um – auch technisch nötig, da
 sys.stdout in einem PyInstaller-Windowed-Build sonst None ist und jedes
 print() crashen würde. Nutzt sv_ttk für Windows-11-Fluent-Optik mit
 Dark-/Light-Umschalter (muss beim Build als Datenverzeichnis mit, siehe
@@ -23,7 +23,7 @@ from tkinter import filedialog, messagebox, ttk
 import sv_ttk
 
 # gui.py liegt in app/, main.py und config.py aber bewusst weiterhin direkt
-# in src/ (siehe Struktur-Entscheidung) - Python setzt beim Start eines
+# in src/ (siehe Struktur-Entscheidung) – Python setzt beim Start eines
 # Skripts automatisch nur dessen EIGENEN Ordner auf sys.path (hier also
 # app/, nicht dessen Elternordner src/). Ohne diese Zeile fände Python
 # "main" deshalb nicht mehr.
@@ -33,7 +33,8 @@ from app import license_gate
 from app import single_instance
 import main as converter
 from tools import placeholder
-from config import LOG_COLORS, STRIPE_COLORS, ICON_PATH, APP_MODEL_ID, TEST_COMPRESSION_THRESHOLD_MB
+from config import (LOG_COLORS, STRIPE_COLORS, ICON_PATH, APP_MODEL_ID,
+                    TEST_COMPRESSION_THRESHOLD_MB, THEME_LABEL_LIGHT, THEME_LABEL_DARK)
 
 
 class _QueueWriter:
@@ -41,18 +42,18 @@ class _QueueWriter:
 
     Braucht: q (queue.Queue, in die geschriebener Text gelegt wird).
 
-    Wie: implementiert nur write()/flush() - genau das, was print() intern
+    Wie: implementiert nur write()/flush() – genau das, was print() intern
     aufruft. Der eigentliche GUI-Thread holt die Textstücke später über
     _poll_log_queue() wieder ab, da Tkinter-Widgets nicht direkt aus einem
     anderen Thread heraus verändert werden dürfen.
     """
 
-    def __init__(self, q: queue.Queue):
+    def __init__(self, log_queue: queue.Queue):
         """Merkt sich die Queue, in die spätere write()-Aufrufe schreiben."""
-        self.q = q
+        self.q = log_queue
 
     def write(self, text):
-        """Legt den Text in die Queue - macht diese Klasse fürs stdout/stderr-Umleiten nutzbar."""
+        """Legt den Text in die Queue – macht diese Klasse fürs stdout/stderr-Umleiten nutzbar."""
         if text:
             self.q.put(text)
 
@@ -65,17 +66,19 @@ class _QueueWriter:
 # Emoji in Tk nur als Schwarz-Weiß-Umrisse (GDI kennt keine Farb-Font-
 # Tabellen, siehe config.LOG_COLORS-Kommentar). Der Rand wird deshalb als
 # eigenes kleines Canvas mit abgerundeten Enden gezeichnet und pro Zeile
-# eingebettet (siehe _make_stripe_canvas) - Tks eingebaute Randfärbung
+# eingebettet (siehe _make_stripe_canvas) – Tks eingebaute Randfärbung
 # (lmargincolor) kann nur ein rechteckiges Feld ohne Formkontrolle füllen.
 _STRIPE_WIDTH = 3
 _STRIPE_HEIGHT = 13
 _STRIPE_GAP = "   "
 
+# Präfix → Kategorie (Streifenfarbe siehe config.STRIPE_COLORS). 'warn' ist
+# ein Hinweis, bei dem die Konvertierung normal weiterläuft; 'error' heißt,
+# dass etwas fehlt oder fehlschlug und das Ergebnis geprüft werden muss.
 _LINE_CATEGORIES = {
-    "[+] ": "ok",
     "[ERFOLG] ": "ok",
     "[!] ": "warn",
-    "[FEHLER] ": "warn",
+    "[FEHLER] ": "error",
     "[*] ": "info",
     "[KOMPRIMIERT] ": "compress",
 }
@@ -85,7 +88,7 @@ def _format_log_line(line: str):
     """Übersetzt eine rohe print()-Zeile aus main.py & Co. für die Anzeige
     im Log-Fenster: [DEBUG]-Zeilen (interne Selbstchecks/Tracing, nur für
     CLI-Debugging gedacht) werden komplett unterdrückt. Gibt (Text ohne
-    Präfix, Kategorie) zurück - Kategorie ist None ohne erkanntes Präfix -
+    Präfix, Kategorie) zurück – Kategorie ist None ohne erkanntes Präfix –
     oder None, wenn die Zeile unterdrückt werden soll."""
     stripped = line.lstrip()
     if stripped.startswith("[DEBUG]"):
@@ -115,24 +118,27 @@ class ConverterApp:
         self.input_path = tk.StringVar()
         self.output_path = tk.StringVar()
         # Test-Modus ist immer sichtbar (kein Klapp-Bereich, siehe
-        # _build_test_mode_section) - Default "aus", damit ein normaler
+        # _build_test_mode_section) – Default "aus", damit ein normaler
         # Kurs-Import nicht aus Versehen Inhalte reduziert.
         self.test_mode_method = tk.StringVar(value="aus")
-        # Zielpfad des zuletzt ERFOLGREICH erzeugten Backups - erst dann darf
+        # Zielpfad des zuletzt ERFOLGREICH erzeugten Backups – erst dann darf
         # der "Zielordner öffnen"-Button darauf zeigen.
         self._last_output = None
         # Sammelt Textstücke aus der Log-Queue, bis eine vollständige Zeile
-        # dasteht - print() liefert nicht zwingend ganze Zeilen auf einmal
+        # dasteht – print() liefert nicht zwingend ganze Zeilen auf einmal
         # an write() (siehe _QueueWriter).
         self._log_buffer = ""
         self._last_log_line_blank = True
         # Referenzen auf alle eingebetteten Streifen-Canvases (siehe
-        # _make_stripe_canvas) - Text.delete() zerstört eingebettete
+        # _make_stripe_canvas) – Text.delete() zerstört eingebettete
         # Fenster nicht von selbst, und bei Theme-Wechsel muss ihr
         # Hintergrund passend zu LOG_COLORS nachgezogen werden.
         self._stripe_canvases = []
+        # True zwischen Start und Ende eines Konvertierungslaufs – siehe
+        # on_close, das beim Schließen währenddessen nachfragt.
+        self._conversion_running = False
         # Bleibt True, solange der Nutzer das Ziel-.mbz-Feld nie selbst
-        # angefasst hat - dann wird es bei jeder neuen ZIP-Auswahl
+        # angefasst hat – dann wird es bei jeder neuen ZIP-Auswahl
         # automatisch mitgeführt. Sobald der Nutzer manuell tippt oder
         # "Speichern unter..." nutzt, wird sein Ziel respektiert und nicht
         # mehr überschrieben (siehe _on_output_changed/_choose_input).
@@ -155,7 +161,7 @@ class ConverterApp:
         ttk.Label(header, text="OLAT → Moodle Konverter", font=("Segoe UI", 15, "bold")).grid(
             row=0, column=0, sticky="w")
         ttk.Button(header, text="Lizenz", command=self._show_license).grid(row=0, column=1, sticky="e", padx=(0, 8))
-        self.theme_button = ttk.Button(header, text="☀ Helles Design", command=self._toggle_theme, width=16)
+        self.theme_button = ttk.Button(header, text=THEME_LABEL_LIGHT, command=self._toggle_theme, width=16)
         self.theme_button.grid(row=0, column=2, sticky="e")
 
         ttk.Label(outer, text="OLAT-Export (.zip):").grid(row=1, column=0, sticky="w")
@@ -199,14 +205,14 @@ class ConverterApp:
 
         # lmargin1 = 0: die erste Anzeigezeile eines Absatzes beginnt direkt
         # mit dem eingebetteten Streifen-Canvas (siehe _append_log_line),
-        # der schon selbst _STRIPE_WIDTH breit ist - ein zusätzlicher
+        # der schon selbst _STRIPE_WIDTH breit ist – ein zusätzlicher
         # lmargin1 würde ihn nur nach rechts verschieben. lmargin2 gilt für
         # durch Zeilenumbruch (wrap="word") entstandene Folgezeilen, die
         # keinen eigenen Streifen mehr bekommen, und ist deshalb auf die
         # gemessene Breite von Streifen + Lücke gesetzt, damit umgebrochener
         # Text bündig unter dem eigentlichen Textanfang weiterläuft statt
         # unter dem Streifen. spacing1 (Abstand VOR der ersten Zeile eines
-        # Absatzes) trennt unterschiedliche Log-Einträge optisch - gilt
+        # Absatzes) trennt unterschiedliche Log-Einträge optisch – gilt
         # bewusst nicht für Folgezeilen (kein spacing2), die eng an ihrer
         # eigenen ersten Zeile bleiben sollen, nicht wie ein neuer Eintrag.
         log_font = tkfont.Font(font=self.log_widget.cget("font"))
@@ -221,7 +227,7 @@ class ConverterApp:
         """Baut den Test-Modus-Bereich: zwei gleichrangige Modus-Knöpfe
         (Aus/Platzhalter, gebunden an test_mode_method). Echte Kompression
         (Original-Inhalt bleibt erkennbar, nur kleiner) gibt es nicht mehr
-        hier im Hauptprogramm - siehe compression_standalone/compression.py
+        hier im Hauptprogramm – siehe compression_standalone/compression.py
         in der Repo-Wurzel, ausgelagert weil PyMuPDF+Pillow allein die .exe
         um ~80MB aufgebläht hätten, für ein selten gebrauchtes Feature.
         "Platzhalter" ersetzt beim Ausführen einheitlich alle Kategorien
@@ -238,12 +244,12 @@ class ConverterApp:
         ).grid(row=0, column=0, sticky="w", padx=10, pady=(6, 10))
 
         # Echte ttk.Radiobutton/"Toolbutton"-Optik zeigt den gewählten Zustand
-        # nur über einen dünnen Rand - in beiden sv_ttk-Themes kaum zu sehen
+        # nur über einen dünnen Rand – in beiden sv_ttk-Themes kaum zu sehen
         # (siehe Nutzer-Feedback). Deshalb stattdessen zwei normale Buttons,
         # deren Style beim Klick manuell umgeschaltet wird: "Accent.TButton"
         # (derselbe kräftige Blauton wie der Konvertieren-Knopf, in beiden
         # Themes bewusst deutlich sichtbar) für den gewählten Modus, normales
-        # "TButton" für den Rest - kein Verlass auf Toolbuttons state-Map.
+        # "TButton" für den Rest – kein Verlass auf Toolbuttons state-Map.
         method_frame = ttk.Frame(frame)
         method_frame.grid(row=1, column=0, sticky="we", padx=10, pady=(0, 10))
         # uniform statt nur weight: sonst bestimmt die jeweils EIGENE
@@ -258,9 +264,9 @@ class ConverterApp:
         for col, (value, text) in enumerate((
                 ("aus", "Original"),
                 ("placeholder", "Größe reduzieren"))):
-            btn = ttk.Button(method_frame, text=text, command=lambda v=value: self._set_test_mode(v))
+            btn = ttk.Button(method_frame, text=text, command=lambda mode_value=value: self._set_test_mode(mode_value))
             # Lücke zwischen den Knöpfen symmetrisch auf beide Seiten
-            # verteilen (3+3 statt 6+0) - sonst frisst das padx nur EINEM
+            # verteilen (3+3 statt 6+0) – sonst frisst das padx nur EINEM
             # Knopf Breite weg und sie sind trotz uniform-Spalten optisch
             # unterschiedlich breit (siehe Nutzer-Feedback).
             btn.grid(row=0, column=col, sticky="we", padx=(0, 3) if col == 0 else (3, 0))
@@ -274,7 +280,7 @@ class ConverterApp:
 
     def _refresh_test_mode_buttons(self):
         """Färbt den aktuell gewählten Test-Modus-Knopf ein (Accent-Blau),
-        alle anderen normal - einziger Ort, der test_mode_method mit der
+        alle anderen normal – einziger Ort, der test_mode_method mit der
         Button-Optik synchron hält."""
         selected = self.test_mode_method.get()
         for value, btn in self._test_mode_buttons.items():
@@ -290,7 +296,7 @@ class ConverterApp:
         colors = LOG_COLORS[sv_ttk.get_theme()]
         self.log_widget.configure(**colors)
         # Die Streifen-Canvases sind eigene Widgets mit eigenem Hintergrund
-        # (siehe _make_stripe_canvas) - der wird von obigem configure()
+        # (siehe _make_stripe_canvas) – der wird von obigem configure()
         # nicht mit erfasst und muss deshalb hier separat nachgezogen werden.
         for canvas in self._stripe_canvases:
             canvas.configure(bg=colors["bg"])
@@ -301,14 +307,14 @@ class ConverterApp:
         sv_ttk.toggle_theme()
         self._apply_log_colors()
         is_dark = sv_ttk.get_theme() == "dark"
-        self.theme_button.config(text="☀ Helles Design" if is_dark else "🌙 Dunkles Design")
+        self.theme_button.config(text=THEME_LABEL_LIGHT if is_dark else THEME_LABEL_DARK)
 
     def _show_license(self):
         """Öffnet die Lizenzbedingungen nochmal zum Nachlesen (Lizenz-Knopf im Header)."""
         license_gate.open_viewer(self.root)
 
     def _on_output_changed(self, *_args):
-        """Reagiert auf JEDE Änderung des Ziel-.mbz-Felds - auch direktes
+        """Reagiert auf JEDE Änderung des Ziel-.mbz-Felds – auch direktes
         Tippen, nicht nur die Dialoge. Läuft die Änderung nicht gerade aus
         der eigenen Auto-Vorschlag-Logik (siehe _choose_input), zählt es als
         bewusste Nutzerentscheidung: das Feld wird danach nie mehr
@@ -318,7 +324,7 @@ class ConverterApp:
 
     def _choose_input(self):
         """Öffnet den Dateidialog für die OLAT-ZIP und schlägt automatisch einen
-        passenden .mbz-Zieldateinamen im Downloads-Ordner vor - so lange, wie
+        passenden .mbz-Zieldateinamen im Downloads-Ordner vor – so lange, wie
         der Nutzer das Ziel-Feld noch nicht selbst angefasst hat (siehe
         _output_auto), damit eine neu gewählte ZIP den alten Zielnamen auch
         bei einer zweiten/dritten Auswahl mitzieht statt beim ersten hängen
@@ -336,7 +342,7 @@ class ConverterApp:
                 self._output_auto = True
 
     def _choose_output(self):
-        """Öffnet den Speichern-unter-Dialog für die Ziel-.mbz - eine so
+        """Öffnet den Speichern-unter-Dialog für die Ziel-.mbz – eine so
         gewählte Datei ist eine bewusste Nutzerentscheidung und wird von
         _choose_input danach nicht mehr automatisch überschrieben."""
         path = filedialog.asksaveasfilename(
@@ -368,7 +374,7 @@ class ConverterApp:
             return
 
         # Muss hier im GUI-Thread gelesen werden, nicht erst drüben in
-        # _run_conversion - das läuft im Hintergrund-Thread, und Tkinter-
+        # _run_conversion – das läuft im Hintergrund-Thread, und Tkinter-
         # Variablen von dort aus zu lesen ist nicht zuverlässig (genau wie
         # in_path/out_path hier und nicht dort gelesen werden).
         test_mode_method = self.test_mode_method.get()
@@ -377,9 +383,23 @@ class ConverterApp:
         self.open_button.grid_remove()
         self.progress.start(12)
         self._clear_log()
+        self._conversion_running = True
         thread = threading.Thread(
             target=self._run_conversion, args=(in_path, out_path, test_mode_method), daemon=True)
         thread.start()
+
+    def on_close(self):
+        """Fragt nach, wenn beim Schließen noch eine Konvertierung läuft.
+
+        Der Arbeits-Thread ist ein Daemon – das Schließen beendet ihn sofort,
+        die .mbz bliebe unvollständig. Das Arbeitsverzeichnis räumt der
+        nächste Lauf auf (main._remove_stale_workdirs)."""
+        if self._conversion_running and not messagebox.askokcancel(
+                "Konvertierung läuft",
+                "Es läuft noch eine Konvertierung. Beim Schließen wird sie abgebrochen "
+                "und die Ziel-Datei bleibt unvollständig.\n\nTrotzdem schließen?"):
+            return
+        self.root.destroy()
 
     def _run_conversion(self, in_path: str, out_path: str, test_mode_method: str):
         """Läuft im Hintergrund-Thread: reduziert bei Bedarf erst per
@@ -390,7 +410,7 @@ class ConverterApp:
         GUI-Thread). test_mode_method kommt fertig aus _start_conversion
         (siehe dortiger Kommentar, warum das nicht hier gelesen wird):
         "aus" (nichts tun) oder "placeholder" (tools/placeholder.py,
-        vorbereitete Ersatzdateien - ersetzt immer alle Kategorien)."""
+        vorbereitete Ersatzdateien – ersetzt immer alle Kategorien)."""
         compressed_path = None
         try:
             convert_input = in_path
@@ -417,7 +437,7 @@ class ConverterApp:
         """Leert das Log-Fenster (Text-Widget ist read-only, deshalb kurz aufsperren).
 
         Text.delete() entfernt eingebettete Streifen-Canvases nicht von
-        selbst (sind eigene Fenster, keine reinen Zeichen) - deshalb hier
+        selbst (sind eigene Fenster, keine reinen Zeichen) – deshalb hier
         zusätzlich explizit zerstören, sonst hängen sie unsichtbar herum.
         """
         self.log_widget.config(state="normal")
@@ -431,23 +451,23 @@ class ConverterApp:
 
     def _make_stripe_canvas(self, color: str) -> tk.Canvas:
         """Zeichnet den farbigen Rand als eigenes kleines Canvas mit
-        abgerundeten Enden (zwei Ovale als Kappen, Rechteck dazwischen) -
+        abgerundeten Enden (zwei Ovale als Kappen, Rechteck dazwischen) –
         Tks eingebaute Randfärbung (lmargincolor) kann nur ein Rechteck ohne
         Ecken-Kontrolle füllen, siehe Kommentar bei STRIPE_COLORS."""
         bg = self.log_widget.cget("bg")
         canvas = tk.Canvas(self.log_widget, width=_STRIPE_WIDTH, height=_STRIPE_HEIGHT,
                            highlightthickness=0, bd=0, bg=bg)
-        r = _STRIPE_WIDTH
-        canvas.create_oval(0, 0, r, r, fill=color, outline="")
-        canvas.create_rectangle(0, r / 2, r, _STRIPE_HEIGHT - r / 2, fill=color, outline="")
-        canvas.create_oval(0, _STRIPE_HEIGHT - r, r, _STRIPE_HEIGHT, fill=color, outline="")
+        radius = _STRIPE_WIDTH
+        canvas.create_oval(0, 0, radius, radius, fill=color, outline="")
+        canvas.create_rectangle(0, radius / 2, radius, _STRIPE_HEIGHT - radius / 2, fill=color, outline="")
+        canvas.create_oval(0, _STRIPE_HEIGHT - radius, radius, _STRIPE_HEIGHT, fill=color, outline="")
         self._stripe_canvases.append(canvas)
         return canvas
 
     def _append_log_line(self, line: str):
         """Filtert/übersetzt eine vollständige Zeile über _format_log_line()
         und hängt sie bei Bedarf ans Log-Fenster an. Mehrere Leerzeilen in
-        Folge werden zu einer zusammengefasst - sonst blieben an den jetzt
+        Folge werden zu einer zusammengefasst – sonst blieben an den jetzt
         komplett unterdrückten [DEBUG]-Blöcken (die oft mit einer eigenen
         Leerzeile umrahmt sind) leere Lücken im Log stehen."""
         result = _format_log_line(line)
@@ -476,7 +496,7 @@ class ConverterApp:
 
         Wie: läuft alle 100ms im GUI-Thread (root.after-Selbstaufruf), da
         Tkinter-Widgets nur aus dem Hauptthread heraus verändert werden
-        dürfen - der Konvertierungs-Thread schreibt nur in die Queue,
+        dürfen – der Konvertierungs-Thread schreibt nur in die Queue,
         niemals direkt ins Widget. Textstücke werden gepuffert, bis eine
         vollständige Zeile dasteht (print() liefert nicht zwingend ganze
         Zeilen auf einmal), erst dann geht's durch _format_log_line().
@@ -490,6 +510,7 @@ class ConverterApp:
                         self._log_buffer = ""
                     self.start_button.config(state="normal", text="Konvertieren")
                     self.progress.stop()
+                    self._conversion_running = False
                     continue
                 if text.startswith("__SUCCESS__"):
                     self._last_output = text[len("__SUCCESS__"):]
@@ -511,7 +532,7 @@ def main():
     und öffnet dann das Hauptfenster."""
     # Muss vor der ersten Fenster-Erzeugung passieren: ohne DPI-Awareness
     # skaliert Windows bei Anzeige-Skalierung >100% das ganze Tkinter-Fenster
-    # nachträglich als Bitmap hoch - Text wirkt dann unscharf, obwohl die
+    # nachträglich als Bitmap hoch – Text wirkt dann unscharf, obwohl die
     # Schriftart selbst (z.B. Consolas) identisch ist.
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
@@ -523,7 +544,7 @@ def main():
 
     # Ebenfalls vor der ersten Fenster-Erzeugung: Windows ordnet Fenster in
     # der Taskleiste anhand der AppUserModelID einem Programm zu. Ohne eigene
-    # ID erbt der Prozess die des Hosts - beim Start aus dem Quellcode also
+    # ID erbt der Prozess die des Hosts – beim Start aus dem Quellcode also
     # die von python.exe, dessen Icon dann in der Taskleiste steht statt des
     # Fenster-Icons.
     try:
@@ -539,7 +560,7 @@ def main():
     root.withdraw()
 
     # Icon für Titelleiste und Taskleiste. Das über OLAT2Moodle.spec in die
-    # .exe eingebettete Icon gilt nur für die Datei im Explorer - ein
+    # .exe eingebettete Icon gilt nur für die Datei im Explorer – ein
     # laufendes Fenster holt sich seines von Tk und zeigt sonst dessen
     # Standard-Feder. default=True vererbt es an alle weiteren Fenster
     # (messagebox, Dateiauswahl), die sonst wieder die Feder tragen würden.
@@ -559,11 +580,14 @@ def main():
 
     # Zeigt bei Bedarf die Zustimmungs-Oberfläche DIREKT in root (siehe
     # license_gate.enforce) und kehrt erst zurück, wenn root wieder leer
-    # und versteckt ist - danach erst wird das eigentliche Hauptfenster
+    # und versteckt ist – danach erst wird das eigentliche Hauptfenster
     # hineingebaut, nie beides gleichzeitig im selben Fenster.
     license_gate.enforce(root)
 
-    ConverterApp(root, log_queue)
+    app = ConverterApp(root, log_queue)
+    # Muss NACH license_gate.enforce() gesetzt werden – das setzt das
+    # Protokoll für seine eigene Phase und danach auf root.destroy zurück.
+    root.protocol("WM_DELETE_WINDOW", app.on_close)
     root.deiconify()
     root.mainloop()
 

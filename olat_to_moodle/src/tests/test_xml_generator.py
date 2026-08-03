@@ -1,4 +1,4 @@
-"""Tests für xml_generator.py - vor allem generate_section_xml (summary-Feld)
+"""Tests für xml_generator.py – vor allem generate_section_xml (summary-Feld)
 und generate_moodle_backup_xml (dynamische blocks/questionbank-Schalter)."""
 
 import xml.etree.ElementTree as ET
@@ -110,3 +110,34 @@ def _setting_value(xml: str, name: str) -> str:
         if setting.findtext('name') == name:
             return setting.findtext('value')
     raise AssertionError(f"Setting '{name}' nicht gefunden")
+
+
+def test_control_characters_in_title_do_not_break_the_xml():
+    # Ein Steuerzeichen im OLAT-Titel macht ungefiltert die komplette
+    # moodle_backup.xml unparsebar – also das ganze Backup unbrauchbar.
+    import xml.etree.ElementTree as ET
+    from conversion.xml_generator import generate_section_xml, generate_moodle_backup_xml
+
+    boeser_titel = "Kapitel\x0b1 & <Test>"
+
+    section = generate_section_xml(3, 3, 1700000000, boeser_titel, [7])
+    root = ET.fromstring(section)
+    assert root.findtext('name') == "Kapitel1 & <Test>"
+
+    backup = generate_moodle_backup_xml(
+        [(7, "page", 3, boeser_titel)],
+        {3: {"title": boeser_titel, "module_ids": [7], "component": None,
+             "itemid": None, "parentcmid": None, "modname": None, "summary": ""}},
+        1700000000, "abc123", fullname=boeser_titel, shortname="Kurs")
+    ET.fromstring(backup)
+
+
+def test_escape_xml_text_keeps_quotes_for_pluginfile_check():
+    # Der Backup-Validator sucht @@PLUGINFILE@@ bis zum nächsten echten
+    # Anführungszeichen – escape_xml_text darf die also nicht maskieren.
+    from conversion.file_manager import escape_xml_text
+
+    assert escape_xml_text('<img src="@@PLUGINFILE@@/a.png">') == \
+        '&lt;img src="@@PLUGINFILE@@/a.png"&gt;'
+    assert escape_xml_text('x', quote=True) == 'x'
+    assert escape_xml_text('a"b', quote=True) == 'a&quot;b'

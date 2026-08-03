@@ -1,4 +1,4 @@
-"""Fragetyp Freitext (Essay) - optional mit Dateianhang.
+"""Fragetyp Freitext (Essay) – optional mit Dateianhang.
 
 OLATs "Freitext" kann zusätzlich zum Textfeld (extendedTextInteraction)
 eine Upload-Checkbox haben (dann exportiert OLAT ein zweites
@@ -8,7 +8,7 @@ Fragetext. Moodles Essay-Typ kann Textfeld und Anhang unabhängig
 schalten, deshalb werden beide Fälle hier gemeinsam behandelt.
 
 Bei reinem Upload bleibt das Textfeld trotzdem sichtbar (nur
-responserequired=0, nicht responseformat=noinline) - sonst wüssten
+responserequired=0, nicht responseformat=noinline) – sonst wüssten
 Studierende ohne eigenen Fragetext nicht, was verlangt wird. Stattdessen
 steht ein Hinweistext vorausgefüllt im responsetemplate.
 """
@@ -16,7 +16,7 @@ steht ein Hinweistext vorausgefüllt im responsetemplate.
 import xml.etree.ElementTree as ET
 from typing import Dict, Optional
 
-from .helpers import element_inner_html, process_html_and_images, build_question_xml, IdGenerator
+from .helpers import extract_question_text, build_question_xml, IdGenerator
 
 _UPLOAD_ONLY_HINT = "Bitte laden Sie hier Ihre Datei hoch (kein Fließtext erforderlich)."
 
@@ -34,15 +34,7 @@ def parse_essay(root: ET.Element, vfs: Dict[str, bytes]) -> Optional[Dict]:
     except ValueError:
         response_lines = 15
 
-    text_parts = []
-    item_body = root.find('.//itemBody')
-    if item_body is not None:
-        for elem in item_body:
-            if elem.tag not in ('extendedTextInteraction', 'uploadInteraction'):
-                text_parts.append(element_inner_html(elem))
-
-    question_html = '\n'.join(filter(None, text_parts))
-    question_text, text_files = process_html_and_images(question_html, vfs)
+    question_text, text_files = extract_question_text(root, vfs, 'extendedTextInteraction', 'uploadInteraction')
 
     return {
         'qtype': 'essay',
@@ -55,12 +47,12 @@ def parse_essay(root: ET.Element, vfs: Dict[str, bytes]) -> Optional[Dict]:
     }
 
 
-def generate_essay_xml(q: Dict, id_gen: IdGenerator) -> str:
+def generate_essay_xml(question: Dict, id_gen: IdGenerator) -> str:
     """responseformat bleibt immer 'editor' (Feld sichtbar), siehe Moduldokstring."""
     essay_id = id_gen.next()
 
-    has_text = q.get('has_text_response', True)
-    allow_attachments = q.get('allow_attachments', False)
+    has_text = question.get('has_text_response', True)
+    allow_attachments = question.get('allow_attachments', False)
     response_required = '1' if has_text else '0'
     attachments = '1' if allow_attachments else '0'
     attachments_required = '1' if allow_attachments else '0'
@@ -69,7 +61,7 @@ def generate_essay_xml(q: Dict, id_gen: IdGenerator) -> str:
     plugin_inner = f"""                  <essay id="{essay_id}">
                     <responseformat>editor</responseformat>
                     <responserequired>{response_required}</responserequired>
-                    <responsefieldlines>{q['response_lines']}</responsefieldlines>
+                    <responsefieldlines>{question['response_lines']}</responsefieldlines>
                     <minwordlimit>$@NULL@$</minwordlimit>
                     <maxwordlimit>$@NULL@$</maxwordlimit>
                     <attachments>{attachments}</attachments>
@@ -82,4 +74,4 @@ def generate_essay_xml(q: Dict, id_gen: IdGenerator) -> str:
                     <maxbytes>0</maxbytes>
                   </essay>"""
 
-    return build_question_xml(q, id_gen, 'essay', plugin_inner, penalty="0.0000000")
+    return build_question_xml(question, id_gen, 'essay', plugin_inner, penalty="0.0000000")

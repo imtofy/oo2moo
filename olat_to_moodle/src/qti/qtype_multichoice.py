@@ -1,15 +1,14 @@
 """Fragetyp Multiple Choice (Single & Multiple Answer).
 
 Bewertungsanteile werden gleichmäßig auf alle richtigen/falschen Antworten
-verteilt (helpers.calculate_choice_fractions) - OLAT exportiert keine
+verteilt (helpers.calculate_choice_fractions) – OLAT exportiert keine
 individuellen Gewichtungen, Gleichverteilung ist die korrekte Abbildung.
 """
 
-import html as html_lib
 import xml.etree.ElementTree as ET
 from typing import Dict, Optional
 
-from .helpers import (element_inner_html, process_html_and_images,
+from .helpers import (answer_xml, extract_question_text, element_inner_html, process_html_and_images,
                      calculate_choice_fractions, format_fraction_decimal,
                      build_question_xml, IdGenerator)
 
@@ -31,15 +30,7 @@ def parse_multichoice(root: ET.Element, vfs: Dict[str, bytes]) -> Optional[Dict]
             if value.text:
                 correct_ids.add(value.text.strip())
 
-    text_parts = []
-    item_body = root.find('.//itemBody')
-    if item_body is not None:
-        for elem in item_body:
-            if elem.tag != 'choiceInteraction':
-                text_parts.append(element_inner_html(elem))
-
-    question_html = '\n'.join(filter(None, text_parts))
-    question_text, text_files = process_html_and_images(question_html, vfs)
+    question_text, text_files = extract_question_text(root, vfs, 'choiceInteraction')
 
     choices = []
     for choice in interaction.findall('.//simpleChoice'):
@@ -54,7 +45,7 @@ def parse_multichoice(root: ET.Element, vfs: Dict[str, bytes]) -> Optional[Dict]
             'is_correct': identifier in correct_ids,
         })
 
-    choices = calculate_choice_fractions(choices, is_single)
+    choices, is_single = calculate_choice_fractions(choices, is_single)
 
     return {
         'qtype': 'multichoice',
@@ -66,24 +57,17 @@ def parse_multichoice(root: ET.Element, vfs: Dict[str, bytes]) -> Optional[Dict]
     }
 
 
-def generate_multichoice_xml(q: Dict, id_gen: IdGenerator) -> str:
+def generate_multichoice_xml(question: Dict, id_gen: IdGenerator) -> str:
     """Baut den <question>-Block (Backup-Format) für eine Multiple-Choice-Frage."""
     answer_blocks = []
-    for choice in q['choices']:
+    for choice in question['choices']:
         aid = id_gen.next()
-        safe_text = html_lib.escape(choice['text'])
         decimal_fraction = format_fraction_decimal(choice['fraction'])
-        answer_blocks.append(f"""                    <answer id="{aid}">
-                      <answertext>{safe_text}</answertext>
-                      <answerformat>1</answerformat>
-                      <fraction>{decimal_fraction}</fraction>
-                      <feedback></feedback>
-                      <feedbackformat>1</feedbackformat>
-                    </answer>""")
+        answer_blocks.append(answer_xml(aid, choice['text'], decimal_fraction))
     answers_block = '\n'.join(answer_blocks)
 
     mc_id = id_gen.next()
-    single_flag = "1" if q['single'] == 'true' else "0"
+    single_flag = "1" if question['single'] == 'true' else "0"
 
     plugin_inner = f"""                  <answers>
 {answers_block}
@@ -104,4 +88,4 @@ def generate_multichoice_xml(q: Dict, id_gen: IdGenerator) -> str:
                     <showstandardinstruction>1</showstandardinstruction>
                   </multichoice>"""
 
-    return build_question_xml(q, id_gen, 'multichoice', plugin_inner, penalty="0.3333333")
+    return build_question_xml(question, id_gen, 'multichoice', plugin_inner, penalty="0.3333333")

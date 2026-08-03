@@ -4,6 +4,27 @@ Zentrale Schaltstelle: entscheidet anhand des QTI-Interaction-Tags, welcher
 qtype_*.py-Parser ein Item übernimmt, und ruft dessen Generator auf. Bekommt
 ein fertiges VFS-Dict (Pfad → Bytes) von qti_quiz_builder.py übergeben,
 baut selbst kein eigenes ZIP/Dateisystem auf.
+
+Welche OLAT-Interaktion zu welchem Moodle-Fragetyp wird – maßgeblich sind die
+Tabellen PARSER_MAP/GENERATORS/MULTI_ENTRY_GENERATORS weiter unten, diese
+Übersicht fasst sie nur lesbar zusammen:
+
+  choiceInteraction (2 Optionen, Wahr/Falsch)  truefalse
+  choiceInteraction (sonst)                    multichoice
+  matchInteraction (class=match_krpim)         multichoice (Kprim, ±25%)
+  matchInteraction (class=match_matrix)        nicht unterstützt (übersprungen)
+  matchInteraction (sonst)                     match (Zuordnung)
+  orderInteraction                             match (Element → Position N)
+  inlineChoiceInteraction                      multianswer (Cloze-Dropdown)
+  textEntryInteraction (genau 1 Lücke)         shortanswer
+  textEntryInteraction (ab 2 Lücken)           multianswer (Cloze, NUMERICAL/
+                                               SHORTANSWER je Lücke)
+  hottextInteraction                           multichoice (Mehrfachauswahl)
+  hotspotInteraction                           ddmarker (Drag & Drop Markierung)
+  extendedTextInteraction                      essay (Freitext, manuell bewertet)
+  uploadInteraction                            essay (nur Dateianhang)
+  extendedTextInteraction + uploadInteraction  essay (Textfeld UND Dateianhang)
+  drawingInteraction                           nicht unterstützt (übersprungen)
 """
 
 import os
@@ -13,7 +34,8 @@ import xml.etree.ElementTree as ET
 import html as html_lib
 from typing import List, Dict, Optional
 
-from .helpers import strip_namespaces, is_qti_item, IdGenerator, make_stamp, wrap_question_bank_entry
+from .helpers import (strip_namespaces, is_qti_item, IdGenerator, make_stamp,
+                      wrap_question_bank_entry, _ANSWER_FILE_TARGETS, _ANSWER_ID_RE)
 
 from .qtype_truefalse import parse_truefalse, generate_truefalse_xml
 from .qtype_multichoice import parse_multichoice, generate_multichoice_xml
@@ -29,7 +51,7 @@ from .qtype_hottext import parse_hottext
 from .qtype_hotspot import parse_hotspot, generate_hotspot_xml
 from .qtype_drawing import parse_drawing
 
-# Erste <question id="N"> im generierten XML - liefert die Frage-ID, die als
+# Erste <question id="N"> im generierten XML – liefert die Frage-ID, die als
 # itemid für die Bilddateien in files.xml gebraucht wird (_embed_question_images).
 _QUESTION_ID_RE = re.compile(r'<question id="(\d+)">')
 
@@ -51,14 +73,14 @@ INTERACTION_PARSERS = {
 }
 
 # extendedTextInteraction + uploadInteraction dürfen gemeinsam im selben Item
-# vorkommen (OLATs Freitext mit "Dateianhang erlauben") - parse_essay()
+# vorkommen (OLATs Freitext mit "Dateianhang erlauben") – parse_essay()
 # verarbeitet beide in einem Aufruf, ohne diese Ausnahme würde die generische
 # "andere Interaktionen gehen verloren"-Warnung hier fälschlich auslösen.
 _JOINTLY_HANDLED_TAGS = {'extendedTextInteraction', 'uploadInteraction'}
 
 # 'matrix'/'drawing' bewusst nicht registriert (kein Moodle-Standardtyp ohne
 # Plugin) → automatischer Skip+Log über generate_question_categories_xml().
-# Klarname fürs Systemprotokoll/Log statt des internen qtype-Codes - betrifft
+# Klarname fürs Systemprotokoll/Log statt des internen qtype-Codes – betrifft
 # in der Praxis nur diese beiden, alle anderen qtype-Werte sind schon
 # lesbare Bezeichnungen (multichoice, shortanswer, etc.).
 _QTYPE_LABELS = {"matrix": "Matrix", "drawing": "Zeichnen"}
@@ -76,7 +98,7 @@ GENERATORS = {
 
 # Cloze/Dropdown (Moodle-intern 'multianswer') brauchen mehrere
 # question_bank_entry-Blöcke pro Frage (Elternfrage + eine je Lücke, siehe
-# qtype_cloze.py) - eigener Dispatch-Pfad statt der einfachen GENERATORS oben.
+# qtype_cloze.py) – eigener Dispatch-Pfad statt der einfachen GENERATORS oben.
 MULTI_ENTRY_GENERATORS = {
     'cloze':          generate_cloze_entries,
     'cloze_dropdown': generate_inlinechoice_entries,
@@ -97,7 +119,7 @@ INTERACTION_TAG_PRIORITY = [
 
 
 def _find_unhandled_interaction_tag(root: ET.Element) -> Optional[str]:
-    """Findet jeden *Interaction-Tag, der nicht in INTERACTION_TAG_PRIORITY steht -
+    """Findet jeden *Interaction-Tag, der nicht in INTERACTION_TAG_PRIORITY steht –
     damit verschwindet auch ein künftig neuer, noch unbekannter Fragetyp nicht unbemerkt."""
     known_tags = set(INTERACTION_TAG_PRIORITY)
     for elem in root.iter():
@@ -129,7 +151,7 @@ def _read_item_layout(vfs: Dict[str, bytes]) -> List[Dict[str, str]]:
     Abschnitte sichtbar, z.B. "Single/Multiple Choice" vs. "Lücken füllen").
     Nur DIREKTE Kind-itemRefs zählen zur jeweiligen Sektion, sonst würden
     Untersektionen den Titel der Elternsektion erben. Leere Liste, wenn
-    keine assessmentTest-Datei existiert - dann bleibt die Fundreihenfolge.
+    keine assessmentTest-Datei existiert – dann bleibt die Fundreihenfolge.
     """
     for path, data in vfs.items():
         if not path.lower().endswith('.xml'):
@@ -157,7 +179,7 @@ def find_standalone_test_title(vfs: Dict[str, bytes]) -> Optional[str]:
     Testeditor-Export ohne umgebenden Kurs) und liefert dessen Titel.
 
     main.py ruft das NUR auf, wenn parse_olat_export() keine Kursknoten
-    gefunden hat - unterscheidet dort "kaputter/leerer Export" (kein Titel)
+    gefunden hat – unterscheidet dort "kaputter/leerer Export" (kein Titel)
     von "eigenständiges Testpaket" (Titel gefunden → Mini-Kurs-Fallback,
     siehe config.STANDALONE_QTI_IDENT).
     """
@@ -188,13 +210,13 @@ def parse_qti_item(xml_content: str, vfs: Dict[str, bytes]) -> Optional[Dict]:
 
     for tag in INTERACTION_TAG_PRIORITY:
         if root.find(f'.//{tag}') is not None:
-            other_tags = [t for t in INTERACTION_TAG_PRIORITY
-                          if t != tag and root.find(f'.//{t}') is not None]
+            other_tags = [tag for tag in INTERACTION_TAG_PRIORITY
+                          if tag != tag and root.find(f'.//{tag}') is not None]
             # extendedTextInteraction + uploadInteraction zusammen sind KEIN
-            # Datenverlust - siehe _JOINTLY_HANDLED_TAGS - werden also aus der
+            # Datenverlust – siehe _JOINTLY_HANDLED_TAGS – werden also aus der
             # Warnung rausgefiltert.
             if tag in _JOINTLY_HANDLED_TAGS:
-                other_tags = [t for t in other_tags if t not in _JOINTLY_HANDLED_TAGS]
+                other_tags = [tag for tag in other_tags if tag not in _JOINTLY_HANDLED_TAGS]
             if other_tags:
                 print(f"[!] '{title}': Item enthält neben <{tag}> weitere "
                       f"Interaktionen ({', '.join(other_tags)}) – nur <{tag}> "
@@ -256,48 +278,91 @@ def extract_questions_from_vfs(vfs: Dict[str, bytes]) -> List[Dict]:
         order_index = {item['file']: i for i, item in enumerate(layout)}
         section_by_file = {item['file']: item['section_title'] for item in layout}
         questions.sort(key=lambda item: order_index.get(item.get('_source_file'), len(layout)))
-        for q in questions:
-            q['section_title'] = section_by_file.get(q.get('_source_file'), '')
+        for question in questions:
+            question['section_title'] = section_by_file.get(question.get('_source_file'), '')
     else:
-        for q in questions:
-            q['section_title'] = ''
+        for question in questions:
+            question['section_title'] = ''
 
     return questions
 
 
 def _first_question_id(xml_fragment: str) -> Optional[int]:
     """Liest die erste <question id="N"> aus einem generierten Frage-XML als int."""
-    m = _QUESTION_ID_RE.search(xml_fragment)
-    return int(m.group(1)) if m else None
+    match = _QUESTION_ID_RE.search(xml_fragment)
+    return int(match.group(1)) if match else None
 
 
-def _embed_question_images(q: Dict, question_id: Optional[int], context_id: int,
-                           file_mgr, now: int) -> None:
-    """Moodle hängt Frage-Bilder nicht über einen inforef-Verweis an, sondern
-    allein über den files.xml-Eintrag mit component/filearea/itemid=Frage-ID:
-      - Fragetext-Bilder:    component='question',       filearea='questiontext'
-      - Hotspot-Hintergrund: component='qtype_ddmarker', filearea='bgimage'
-    Antwort-Bilder (in einzelnen Optionen) werden noch nicht eingebettet
-    (siehe helpers.warn_dropped_files)."""
-    if question_id is None or file_mgr is None:
+
+
+def _embed_answer_option_images(question: Dict, question_xml: str, context_id: int,
+                                file_mgr, now: int) -> None:
+    """Bettet Bilder aus einzelnen Antwortoptionen/Teilfragen ein.
+
+    Die Zuordnung läuft über die Reihenfolge: die Generatoren geben je
+    Option genau ein <answer>/<match>-Element in derselben Reihenfolge aus,
+    in der die Optionen im Frage-Dict stehen. Fragetypen ohne Eintrag in
+    _ANSWER_FILE_TARGETS bleiben unangetastet (siehe
+    helpers.warn_dropped_files, das den Rest weiterhin meldet)."""
+    target = _ANSWER_FILE_TARGETS.get(question.get('qtype'))
+    if target is None:
+        return
+    element, component, filearea = target
+    options = (question.get('choices') or []) + (question.get('subquestions') or [])
+    if not any(option.get('files') for option in options):
         return
 
-    for f in q.get('text_files') or []:
+    ids = [int(answer_id) for answer_id in _ANSWER_ID_RE[element].findall(question_xml)]
+    if len(ids) != len(options):
+        print(f"[!] '{question.get('title')}': {len(options)} Antwortoption(en), aber "
+              f"{len(ids)} <{element}>-Eintrag/Einträge im erzeugten XML – "
+              f"Bilder in den Optionen werden nicht eingebettet.")
+        return
+
+    for option, answer_id in zip(options, ids):
+        for option_file in option.get('files') or []:
+            try:
+                data = base64.b64decode(option_file['b64'])
+            except (ValueError, KeyError):
+                continue
+            file_mgr.add_moodle_directory(context_id, component, filearea, answer_id, now)
+            file_mgr.add_moodle_file(source_content=data, filename=option_file['name'],
+                                     contextid=context_id, component=component,
+                                     filearea=filearea, itemid=answer_id, now=now)
+
+
+def _embed_question_images(question: Dict, question_xml: str, context_id: int,
+                           file_mgr, now: int) -> None:
+    """Moodle hängt Frage-Bilder nicht über einen inforef-Verweis an, sondern
+    allein über den files.xml-Eintrag mit component/filearea/itemid:
+      – Fragetext-Bilder:    component='question',       filearea='questiontext'
+      – Hotspot-Hintergrund: component='qtype_ddmarker', filearea='bgimage'
+    Bilder aus einzelnen Antwortoptionen laufen über einen eigenen
+    Dateibereich, siehe _embed_answer_option_images."""
+    if file_mgr is None:
+        return
+    question_id = _first_question_id(question_xml)
+    if question_id is None:
+        return
+
+    for text_file in question.get('text_files') or []:
         try:
-            data = base64.b64decode(f['b64'])
+            data = base64.b64decode(text_file['b64'])
         except (ValueError, KeyError):
             continue
         file_mgr.add_moodle_directory(context_id, 'question', 'questiontext', question_id, now)
-        file_mgr.add_moodle_file(source_content=data, filename=f['name'], contextid=context_id,
+        file_mgr.add_moodle_file(source_content=data, filename=text_file['name'], contextid=context_id,
                                  component='question', filearea='questiontext',
                                  itemid=question_id, now=now)
 
-    if q.get('qtype') == 'hotspot' and q.get('image_data') and q.get('image_filename'):
-        name = os.path.basename(q['image_filename'])
+    if question.get('qtype') == 'hotspot' and question.get('image_data') and question.get('image_filename'):
+        name = os.path.basename(question['image_filename'])
         file_mgr.add_moodle_directory(context_id, 'qtype_ddmarker', 'bgimage', question_id, now)
-        file_mgr.add_moodle_file(source_content=q['image_data'], filename=name, contextid=context_id,
+        file_mgr.add_moodle_file(source_content=question['image_data'], filename=name, contextid=context_id,
                                  component='qtype_ddmarker', filearea='bgimage',
                                  itemid=question_id, now=now)
+
+    _embed_answer_option_images(question, question_xml, context_id, file_mgr, now)
 
 
 def generate_question_categories_xml(questions: List[Dict], id_gen: IdGenerator,
@@ -306,14 +371,14 @@ def generate_question_categories_xml(questions: List[Dict], id_gen: IdGenerator,
                                      context_instance_id: int = 1,
                                      file_mgr=None, now: int = 0):
     """Baut das Kategorie-Paar ('top'-Elternkategorie + echte Kategorie mit den
-    Fragen) für EINE Quiz-Aktivität - entspricht dem Aufbau echter Moodle-
+    Fragen) für EINE Quiz-Aktivität – entspricht dem Aufbau echter Moodle-
     Backups (Referenz-questions.xml: Kategorie id=1 'top' + id=2 als Kind,
     gleiche contextid/contextinstanceid wie die Quiz-Aktivität). Gibt KEINEN
     <question_categories>-Wrapper zurück, main.py fügt mehrere Kategorie-
     Paare zu einer globalen questions.xml zusammen.
 
     Gibt (XML-Fragment, [top_id, cat_id], Anzahl übersprungener Fragen,
-    generierte Fragen mit zusätzlichem Schlüssel 'entry_id') zurück -
+    generierte Fragen mit zusätzlichem Schlüssel 'entry_id') zurück –
     'entry_id' braucht qti_quiz_builder.py, um die Frage als Slot in
     quiz.xml einzuhängen; Cloze-Subquestions tauchen hier nicht auf, sie
     hängen nur über die <sequence> der Elternfrage dran.
@@ -328,32 +393,30 @@ def generate_question_categories_xml(questions: List[Dict], id_gen: IdGenerator,
     skipped = 0
     generated_questions: List[Dict] = []
 
-    for q in questions:
-        qtype = q['qtype']
+    for question in questions:
+        qtype = question['qtype']
 
         multi_fn = MULTI_ENTRY_GENERATORS.get(qtype)
         if multi_fn is not None:
-            entry_blocks, parent_entry_id = multi_fn(q, id_gen, cat_id)
+            entry_blocks, parent_entry_id = multi_fn(question, id_gen, cat_id)
             entries_xml.extend(entry_blocks)
-            generated_questions.append({**q, 'entry_id': parent_entry_id})
+            generated_questions.append({**question, 'entry_id': parent_entry_id})
             if entry_blocks:
-                _embed_question_images(q, _first_question_id(entry_blocks[0]),
-                                       context_id, file_mgr, now)
+                _embed_question_images(question, entry_blocks[0], context_id, file_mgr, now)
             continue
 
         generator_fn = GENERATORS.get(qtype)
         if generator_fn is None:
             label = _QTYPE_LABELS.get(qtype, qtype)
-            print(f"[!] Fragetyp '{label}' bei '{q['title']}' wird nicht unterstützt – übersprungen.")
+            print(f"[!] Fragetyp '{label}' bei '{question['title']}' wird nicht unterstützt – übersprungen.")
             skipped += 1
             continue
 
-        question_xml = generator_fn(q, id_gen)
+        question_xml = generator_fn(question, id_gen)
         entry_xml, entry_id = wrap_question_bank_entry(question_xml, cat_id, id_gen)
         entries_xml.append(entry_xml)
-        generated_questions.append({**q, 'entry_id': entry_id})
-        _embed_question_images(q, _first_question_id(question_xml),
-                               context_id, file_mgr, now)
+        generated_questions.append({**question, 'entry_id': entry_id})
+        _embed_question_images(question, question_xml, context_id, file_mgr, now)
 
     entries_block = '\n'.join(entries_xml)
 
@@ -375,7 +438,7 @@ def generate_question_categories_xml(questions: List[Dict], id_gen: IdGenerator,
     </question_bank_entries>
   </question_category>
   <question_category id="{cat_id}">
-    <name>{html_lib.escape(category_name)}</name>
+    <name>{html_lib.escape(category_name, quote=False)}</name>
     <contextid>{context_id}</contextid>
     <contextlevel>{context_level}</contextlevel>
     <contextinstanceid>{context_instance_id}</contextinstanceid>

@@ -1,7 +1,7 @@
 """Fragetyp Wahr/Falsch.
 
 QTI kennt kein eigenes True/False-Tag, OLAT exportiert es als normale
-2-Optionen-choiceInteraction - wir erkennen das Muster heuristisch über
+2-Optionen-choiceInteraction – wir erkennen das Muster heuristisch über
 die Antworttexte (TRUE_LABELS/FALSE_LABELS in config.py). Passt das
 Muster nicht, gibt der Parser None zurück und qtype_multichoice.py
 übernimmt automatisch.
@@ -16,13 +16,15 @@ from config import TRUE_LABELS, FALSE_LABELS
 
 def _looks_like_true_false(choices: List[Dict]) -> Optional[bool]:
     """Prüft die Texte gegen TRUE_LABELS/FALSE_LABELS unabhängig von der
-    Reihenfolge im XML - was richtig ist, entscheidet die correctResponse,
+    Reihenfolge im XML – was richtig ist, entscheidet die correctResponse,
     nicht die Position. None bei unklarem Muster oder uneindeutiger
     correctResponse (Fallback auf generisches Multiple-Choice)."""
     if len(choices) != 2:
         return None
 
-    texts = [strip_tags(c['text']).strip().lower().rstrip('.') for c in choices]
+    # Ab hier ist len(choices) == 2 garantiert (Abbruch oben), der
+    # Indexzugriff unten braucht deshalb keine weitere Prüfung.
+    texts = [strip_tags(choice['text']).strip().lower().rstrip('.') for choice in choices]
 
     if texts[0] in TRUE_LABELS and texts[1] in FALSE_LABELS:
         true_choice, false_choice = choices[0], choices[1]
@@ -87,14 +89,14 @@ def parse_truefalse(root: ET.Element, vfs: Dict[str, bytes]) -> Optional[Dict]:
     }
 
 
-def generate_truefalse_xml(q: Dict, id_gen: IdGenerator) -> str:
+def generate_truefalse_xml(question: Dict, id_gen: IdGenerator) -> str:
     """Baut den <question>-Block (Backup-Format) für eine Wahr/Falsch-Frage."""
     wahr_id = id_gen.next()
     falsch_id = id_gen.next()
     tf_id = id_gen.next()
 
-    wahr_fraction = "1.0000000" if q['correct'] else "0.0000000"
-    falsch_fraction = "0.0000000" if q['correct'] else "1.0000000"
+    wahr_fraction = "1.0000000" if question['correct'] else "0.0000000"
+    falsch_fraction = "0.0000000" if question['correct'] else "1.0000000"
 
     plugin_inner = f"""                  <answers>
                     <answer id="{wahr_id}">
@@ -118,4 +120,4 @@ def generate_truefalse_xml(q: Dict, id_gen: IdGenerator) -> str:
                     <showstandardinstruction>0</showstandardinstruction>
                   </truefalse>"""
 
-    return build_question_xml(q, id_gen, 'truefalse', plugin_inner, penalty="1.0000000")
+    return build_question_xml(question, id_gen, 'truefalse', plugin_inner, penalty="1.0000000")

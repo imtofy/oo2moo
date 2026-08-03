@@ -1,15 +1,15 @@
 """Filtert echte Nutzerkennungen aus dem OLAT-Export, BEVOR irgendein anderes
-Modul den Content zu sehen bekommt - CourseManifest ruft sanitize_vfs() einmal
+Modul den Content zu sehen bekommt – CourseManifest ruft sanitize_vfs() einmal
 direkt nach dem Einlesen auf. Parser, node_processor, html_cleaner usw.
 bekommen dadurch automatisch nur den bereinigten Content, ohne dass die
 Anonymisierung an anderer Stelle im Code nochmal berücksichtigt werden muss.
 
 Bekannte OLAT-Kennungs-Formate (siehe PATTERNS unten):
-  - 'B' + 2 Buchstaben + 4 Ziffern (aktuelles Format, z.B. 'BAA0000')
-  - 'u' + 9 Ziffern (uraltes Format, z.B. 'u000000000')
-  - '<name>-admin' (Service-/Admin-Accounts, meist aus echtem Nachnamen,
+  – 'B' + 2 Buchstaben + 4 Ziffern (aktuelles Format, z.B. 'BAA0000')
+  – 'u' + 9 Ziffern (uraltes Format, z.B. 'u000000000')
+  – '<name>-admin' (Service-/Admin-Accounts, meist aus echtem Nachnamen,
     z.B. 'mustermann-admin')
-  - E-Mail-Adressen
+  – E-Mail-Adressen
 
 Lässt sich einfach erweitern: einfach ein weiteres re.compile(...) in
 PATTERNS ergänzen, falls ein neues Format auftaucht.
@@ -28,7 +28,7 @@ _TEXT_EXTENSIONS = ('.xml', '.html', '.htm')
 
 
 def sanitize_vfs(vfs: dict) -> int:
-    """Ersetzt in-place jeden Treffer in jeder Text-Datei im VFS (XML/HTML -
+    """Ersetzt in-place jeden Treffer in jeder Text-Datei im VFS (XML/HTML –
     Bilder/Videos etc. werden übersprungen, auch wenn die verschachtelt in
     repo.zip/oonode.zip stecken, weil CourseManifest das vorher schon flach
     in vfs entpackt hat). Gibt zurück, wie viele Treffer ersetzt wurden, fürs Log."""

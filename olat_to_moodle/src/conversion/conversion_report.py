@@ -1,7 +1,7 @@
 """Baut das Systemprotokoll (den Konvertierungsbericht) am Ende jedes
 konvertierten Kurses: Symbol-Legende, ✅-Erfolgstabelle, ⚠️/❓-Warnungen,
 🔀-Markierungen für zu tief verschachtelte Struktur und den Ordner mit
-verwaisten Dateien. Reine Report-Formatierung - main.py liefert nur die
+verwaisten Dateien. Reine Report-Formatierung – main.py liefert nur die
 gesammelten Daten (transferred_elements, skipped_elements, ...) rein.
 """
 import os
@@ -9,12 +9,13 @@ import shutil
 import urllib.parse
 import html as html_lib
 
-from config import (OLAT_NAMES, UNSUPPORTED_TYPE_HELP_LINKS, MOODLE_MODULE_NAMES,
+from config import (OLAT_NAMES, UNSUPPORTED_TYPE_HELP_LINKS, UNSUPPORTED_TYPE_REASONS, MOODLE_MODULE_NAMES,
                     SUCCESS_SYMBOL, WARNING_SYMBOL, UNRECOGNIZED_TYPE_MARKER,
                     FLATTENED_BOUNDARY_MARKER, FLATTENED_CHILD_MARKER,
-                    SYMBOL_COLORS, SYMBOL_LEGEND_TEXT, NEUTRAL_COLORS, LINK_COLOR)
+                    SYMBOL_COLORS, SYMBOL_LEGEND_TEXT, NEUTRAL_COLORS, LINK_COLOR,
+                    ORPHAN_INTERNAL_SUBFOLDER, ORPHAN_INTERNAL_EXTS)
 from .moodle_xml import modify_activity_xml, modify_module_xml, rewrite_inforef_xml
-from .file_manager import write_xml
+from .file_manager import write_activity_context
 
 
 def _build_symbol_legend_html(active_symbols):
@@ -43,14 +44,20 @@ def _build_symbol_legend_html(active_symbols):
 
 def build_unsupported_placeholder_html(olat_type):
     """Baut den Inhalt der ⚠️-Warn-Platzhalterseite für einen OLAT-Bausteintyp
-    ohne Moodle-Äquivalent (SKIPPED_OLAT_TYPES) - ersetzt an dessen Original-
-    Position im Kurs den sonst komplett fehlenden Baustein, ergänzt um einen
-    Hilfe-Link, falls in UNSUPPORTED_TYPE_HELP_LINKS einer hinterlegt ist."""
+    aus SKIPPED_OLAT_TYPES – ersetzt an dessen Original-Position im Kurs den
+    sonst komplett fehlenden Baustein, ergänzt um einen Hilfe-Link, falls in
+    UNSUPPORTED_TYPE_HELP_LINKS einer hinterlegt ist.
+
+    Der Grund steht je Typ in UNSUPPORTED_TYPE_REASONS: pauschal "braucht ein
+    Plugin" wäre falsch, mod_lti und mod_h5pactivity sind Moodle-Core – dort
+    scheitert es an der Konfiguration bzw. am Inhalt, nicht am fehlenden
+    Modul."""
     label = OLAT_NAMES.get(olat_type, olat_type)
+    reason = UNSUPPORTED_TYPE_REASONS.get(
+        olat_type, 'Für diesen Bausteintyp gibt es in Moodle keine Entsprechung.')
     html = (f'<p><strong>{WARNING_SYMBOL} Dieser Baustein ({html_lib.escape(label)}) konnte nicht '
             f'automatisch nach Moodle übertragen werden.</strong></p>'
-            f'<p>Dieser Bausteintyp hat ohne Zusatz-Plugin kein Moodle-Äquivalent und muss bei '
-            f'Bedarf manuell neu angelegt werden.</p>')
+            f'<p>{html_lib.escape(reason)} Er muss bei Bedarf manuell neu angelegt werden.</p>')
     help_link = UNSUPPORTED_TYPE_HELP_LINKS.get(olat_type)
     if help_link:
         html += (f'<p><a href="{html_lib.escape(help_link)}" target="_blank">'
@@ -60,7 +67,7 @@ def build_unsupported_placeholder_html(olat_type):
 
 def build_flattened_boundary_html():
     """Inhalt der 🔀-Markierungsseite für einen zu tief verschachtelten Struktur-
-    Knoten (MAX_SECTION_DEPTH) - ersetzt den fehlenden eigenen Moodle-Abschnitt.
+    Knoten (MAX_SECTION_DEPTH) – ersetzt den fehlenden eigenen Moodle-Abschnitt.
     Bekommt eine 'page' statt (wie normale Struktur-Knoten) ein 'label', weil
     label-Aktivitäten in Moodle keine eigene View-Seite haben (has_view() ==
     false) und deshalb vom Systemprotokoll aus nicht verlinkt werden könnten."""
@@ -97,19 +104,26 @@ def write_protocol_activities(temp_dir, template_mapping, file_mgr, sections,
     module_id = next_module_id
     context_id = next_context_id
 
-    def _write_activity(m_type, title, html_content, activity_file_ids):
+    def _write_activity(m_type, title, html_content, activity_file_ids, collapsed=False):
         """Baut eine einzelne Aktivität aus dem passenden Template und trägt
-        sie in Sektion und Buchhaltung (sections/processed_activities) ein."""
+        sie in Sektion und Buchhaltung (sections/processed_activities) ein.
+
+        collapsed=True klappt einen Ordner im Kurs zu (showexpanded=0) – bei
+        vielen Dateien wäre die aufgeklappte Liste sonst länger als der
+        gesamte übrige Kurs."""
         nonlocal module_id, context_id
-        context_path = os.path.join(temp_dir, "contexts", f"context_{context_id}")
-        os.makedirs(context_path, exist_ok=True)
-        write_xml(os.path.join(context_path, "context.xml"),
-                  f'<context id="{context_id}" contextlevel="70" instanceid="{module_id}"></context>')
+        write_activity_context(temp_dir, context_id, module_id)
         a_path = os.path.join(temp_dir, "activities", f"{m_type}_{module_id}")
         shutil.copytree(template_mapping[m_type], a_path)
         modify_module_xml(os.path.join(a_path, "module.xml"), module_id, section_id, now)
         modify_activity_xml(os.path.join(a_path, f"{m_type}.xml"), m_type, module_id,
                             context_id, title, now, "summary", False, html_content, "")
+        if collapsed:
+            activity_path = os.path.join(a_path, f"{m_type}.xml")
+            content = open(activity_path, encoding="utf-8").read()
+            open(activity_path, "w", encoding="utf-8", newline="").write(
+                content.replace("<showexpanded>1</showexpanded>",
+                                "<showexpanded>0</showexpanded>", 1))
         rewrite_inforef_xml(os.path.join(a_path, "inforef.xml"), activity_file_ids)
         sections[section_id]["module_ids"].append(module_id)
         processed_activities.append((module_id, m_type, section_id, title))
@@ -123,8 +137,8 @@ def write_protocol_activities(temp_dir, template_mapping, file_mgr, sections,
         active_symbols = []
         if transferred_elements:
             active_symbols.append(SUCCESS_SYMBOL)
-        active_symbols += [s for s in (WARNING_SYMBOL, UNRECOGNIZED_TYPE_MARKER)
-                          if any(el.get('symbol') == s for el in skipped_elements)]
+        active_symbols += [symbol for symbol in (WARNING_SYMBOL, UNRECOGNIZED_TYPE_MARKER)
+                          if any(el.get('symbol') == symbol for el in skipped_elements)]
         if flattened_structures:
             active_symbols += [FLATTENED_BOUNDARY_MARKER, FLATTENED_CHILD_MARKER]
         html += _build_symbol_legend_html(active_symbols)
@@ -147,12 +161,12 @@ def write_protocol_activities(temp_dir, template_mapping, file_mgr, sections,
                           f'<th style="{head_cell}">OLAT-Baustein</th><th style="{head_cell}">Name in OLAT</th>'
                           f'<th style="{head_cell}">Moodle-Äquivalent</th><th style="{head_cell}">Name in Moodle</th></tr>')
 
-            # Nur die ersten visible_rows sofort sichtbar - Moodle-Content
+            # Nur die ersten visible_rows sofort sichtbar – Moodle-Content
             # erlaubt kein <script>, also kein JS-"Mehr anzeigen"-Knopf. Ein
             # zweites <details> als Fortsetzung erreicht dieselbe UX rein mit
             # HTML (dieselbe Technik wie bei den Fehler-Gruppen unten).
             visible_rows = 8
-            sorted_elements = sorted(transferred_elements, key=lambda e: (e['olat_type'], e['olat_name']))
+            sorted_elements = sorted(transferred_elements, key=lambda element: (element['olat_type'], element['olat_name']))
             visible, rest = sorted_elements[:visible_rows], sorted_elements[visible_rows:]
             table_margin = "10px" if rest else "20px"
 
@@ -174,7 +188,7 @@ def write_protocol_activities(temp_dir, template_mapping, file_mgr, sections,
 
             # Gegencheck: die tatsächlich im HTML gerenderten Zeilen zählen
             # (statt der Liste zu vertrauen, aus der sie gebaut wurden) und mit
-            # der Zahl im Fliesstext vergleichen. Fängt Render-Bugs ab (z.B.
+            # der Zahl im Fließtext vergleichen. Fängt Render-Bugs ab (z.B.
             # Slicing-/Dedup-Fehler bei visible/rest), die eine reine
             # len(transferred_elements)-Prüfung nicht sehen würde, weil sie
             # dieselbe Quelle nochmal abfragen würde statt das Ergebnis zu prüfen.
@@ -216,19 +230,19 @@ def write_protocol_activities(temp_dir, template_mapping, file_mgr, sections,
                 groups.setdefault(el['type'], []).append(el)
 
             # ⚠️ ("fehlt komplett") und ❓ ("übernommen, aber fraglich") sind
-            # zwei inhaltlich verschiedene Aussagen - getrennt in eigenen
+            # zwei inhaltlich verschiedene Aussagen – getrennt in eigenen
             # Abschnitten ausgeben statt alphabetisch quer durcheinander,
             # sonst verwischt genau der Unterschied, den die Symbole eigentlich
             # markieren sollen. 'sonstige_keys' fängt die seltenen Fälle ohne
             # eines der beiden Symbole ab (z.B. "Template fehlt",
-            # "Konvertierungsfehler" - main.py setzt dort kein 'symbol').
-            warning_keys = sorted(k for k in groups if groups[k][0].get('symbol') == WARNING_SYMBOL)
-            question_keys = sorted(k for k in groups
-                                   if groups[k][0].get('symbol') == UNRECOGNIZED_TYPE_MARKER)
-            sonstige_keys = sorted(k for k in groups if k not in warning_keys and k not in question_keys)
+            # "Konvertierungsfehler" – main.py setzt dort kein 'symbol').
+            warning_keys = sorted(group_key for group_key in groups if groups[group_key][0].get('symbol') == WARNING_SYMBOL)
+            question_keys = sorted(group_key for group_key in groups
+                                   if groups[group_key][0].get('symbol') == UNRECOGNIZED_TYPE_MARKER)
+            sonstige_keys = sorted(group_key for group_key in groups if group_key not in warning_keys and group_key not in question_keys)
 
             # Bei vielen unterschiedlichen Gruppen (Typ+Grund-Kombination) erschlagen
-            # zu viele gleichzeitig aufgeklappte Boxen die Seite - dieselbe
+            # zu viele gleichzeitig aufgeklappte Boxen die Seite – dieselbe
             # Show-more-Technik wie bei der ✅-Tabelle oben (visible_rows): nur
             # die ersten visible_groups pro Abschnitt direkt offen sichtbar, der
             # Rest hinter einem zusätzlichen Sammel-<details>.
@@ -238,10 +252,10 @@ def write_protocol_activities(temp_dir, template_mapping, file_mgr, sections,
                 """Baut die Boxen für eine Liste von Gruppen-Keys, inkl. Show-more
                 ab dem visible_groups-ten Eintrag."""
                 visible_keys, rest_keys = keys[:visible_groups], keys[visible_groups:]
-                out = "".join(_group_block(k, groups[k]) for k in visible_keys)
+                out = "".join(_group_block(group_key, groups[group_key]) for group_key in visible_keys)
                 if rest_keys:
-                    rest_html = "".join(_group_block(k, groups[k]) for k in rest_keys)
-                    rest_count = sum(len(groups[k]) for k in rest_keys)
+                    rest_html = "".join(_group_block(group_key, groups[group_key]) for group_key in rest_keys)
+                    rest_count = sum(len(groups[group_key]) for group_key in rest_keys)
                     out += (f'<details style="margin:0 0 10px;"><summary style="cursor:pointer; '
                             f'font-size:14px; color:#8a6a12;">+ {len(rest_keys)} weitere Gruppen '
                             f'anzeigen ({rest_count} Baustein(e))</summary>'
@@ -249,20 +263,20 @@ def write_protocol_activities(temp_dir, template_mapping, file_mgr, sections,
                 return out
 
             if warning_keys:
-                warning_count = sum(len(groups[k]) for k in warning_keys)
+                warning_count = sum(len(groups[group_key]) for group_key in warning_keys)
                 html += (f"<p>{WARNING_SYMBOL} <strong>{warning_count}</strong> Bausteine fehlen "
                          f"komplett (kein Moodle-Äquivalent, muss von Hand nachgebaut werden):</p>")
                 html += _render_section(warning_keys)
 
             if question_keys:
-                question_count = sum(len(groups[k]) for k in question_keys)
+                question_count = sum(len(groups[group_key]) for group_key in question_keys)
                 html += (f"<p>{UNRECOGNIZED_TYPE_MARKER} <strong>{question_count}</strong> Bausteine "
                          f"wurden übernommen, der Inhalt ist aber fraglich (bitte gegenprüfen – "
                          f"Links führen, wo vorhanden, direkt zur Aktivität im Kurs):</p>")
                 html += _render_section(question_keys)
 
             if sonstige_keys:
-                sonstige_count = sum(len(groups[k]) for k in sonstige_keys)
+                sonstige_count = sum(len(groups[group_key]) for group_key in sonstige_keys)
                 html += (f"<p><strong>{sonstige_count}</strong> weitere Bausteine konnten nicht "
                          f"übernommen werden:</p>")
                 html += _render_section(sonstige_keys)
@@ -320,14 +334,27 @@ def write_protocol_activities(temp_dir, template_mapping, file_mgr, sections,
     if orphaned_files:
         if "folder" in template_mapping:
             file_ids = [file_mgr.add_moodle_directory(context_id, "mod_folder", "content", 0, now)]
+            # OLATs interne XML wandert in einen eigenen Unterordner: sie
+            # gehört zur Vollständigkeit, ist aber nichts, was jemand von Hand
+            # weiterverwendet – im selben Verzeichnis verdeckt sie die Dateien,
+            # die man wirklich sichten will.
+            internal = [(name, data) for name, data in orphaned_files.items()
+                        if name.lower().endswith(ORPHAN_INTERNAL_EXTS)]
+            if internal:
+                file_ids.append(file_mgr.add_moodle_directory(
+                    context_id, "mod_folder", "content", 0, now,
+                    filepath=f"/{ORPHAN_INTERNAL_SUBFOLDER}/"))
             for fname, fdata in sorted(orphaned_files.items(), key=lambda kv: kv[0].lower()):
+                is_internal = fname.lower().endswith(ORPHAN_INTERNAL_EXTS)
                 file_ids.append(file_mgr.add_moodle_file(
                     source_content=fdata, filename=fname, contextid=context_id,
-                    component="mod_folder", filearea="content", itemid=0, now=now))
+                    component="mod_folder", filearea="content", itemid=0, now=now,
+                    filepath=f"/{ORPHAN_INTERNAL_SUBFOLDER}/" if is_internal else "/"))
             intro = ("<p>Diese Dateien lagen im OLAT-Kursordner, wurden aber von keinem "
                      "Baustein referenziert (z.B. ehemalige Forumsanhänge). Bitte sichten "
                      "und bei Bedarf den passenden Aktivitäten zuordnen.</p>")
-            _write_activity("folder", "Systemprotokoll: Verwaiste Dateien", intro, file_ids)
+            _write_activity("folder", "Systemprotokoll: Verwaiste Dateien", intro, file_ids,
+                            collapsed=True)
         elif "page" in template_mapping:
             file_ids = [file_mgr.add_moodle_directory(context_id, "mod_page", "content", 0, now)]
             html = "<h3>Verwaiste Dateien</h3><ul>"
